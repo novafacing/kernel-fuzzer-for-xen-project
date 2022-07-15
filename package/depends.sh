@@ -20,7 +20,7 @@ fi
 apt-get --quiet --yes install build-essential git wget curl cmake flex bison libjson-c-dev autoconf-archive clang python3-dev libsystemd-dev nasm bc libx11-dev ninja-build apt-utils curl sudo zip gzip tar \
                          transfig tgif libxc-dev  texlive-latex-base texlive-latex-recommended \
                          texlive-fonts-extra texlive-fonts-recommended mercurial \
-                         make zlib1g-dev python python-dev libncurses5-dev patch libsdl-dev libjpeg62-dev \
+                         make zlib1g-dev python python-dev libncurses5-dev patch libsdl-dev \
                          iasl libbz2-dev e2fslibs-dev uuid-dev ocaml ocaml-findlib xz-utils libyajl-dev \
                          markdown pandoc  ccache git-core  libcurl4   python3-dev texinfo  wget   autoconf libtool \        
  	          	 build-essential libsdl1.2-dev  xtightvncviewer tightvncserver x11vnc uuid-runtime  bridge-utils \
