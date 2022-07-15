@@ -17,18 +17,7 @@ else
     apt-get update
 fi
 
-apt-get --quiet --yes install build-essential git wget curl cmake flex bison libjson-c-dev autoconf-archive clang python3-dev libsystemd-dev nasm bc libx11-dev ninja-build apt-utils curl sudo zip gzip tar \
-                         transfig tgif libxc-dev  texlive-latex-base texlive-latex-recommended \
-                         texlive-fonts-extra texlive-fonts-recommended mercurial \
-                         make zlib1g-dev libncurses5-dev patch \
-                         iasl libbz2-dev e2fslibs-dev uuid-dev ocaml ocaml-findlib xz-utils libyajl-dev \
-                         markdown pandoc  ccache git-core  libcurl4   python3-dev texinfo  wget   autoconf libtool \        
- 	          	 build-essential libsdl1.2-dev  xtightvncviewer tightvncserver x11vnc uuid-runtime  bridge-utils \
- 	          	 liblzma-dev  git bcc bin86 gawk iproute2 libcurl4-openssl-dev bzip2 libpci-dev \
- 	          	 libc6-dev libc6-dev-i386 linux-libc-dev libvncserver-dev libssl-dev \
- 	          	 libx11-dev bison flex  gettext  libpixman-1-dev libaio-dev libfdt-dev cabextract \
- 	          	 libglib2.0-dev  automake libjson-c-dev libfuse-dev autoconf-archive kpartx python3-pip \
- 	          	 libsystemd-dev cmake snap gcc-multilib nasm binutils bc libunwind-dev ninja-build checkpolicy clang gcc-7 g++-7 lsb-release
+apt-get --quiet --yes install git build-essential libfdt-dev libpixman-1-dev libssl-dev libsdl1.2-dev autoconf libtool xtightvncviewer tightvncserver x11vnc uuid-runtime uuid-dev bridge-utils python3-dev liblzma-dev libc6-dev wget git bcc bin86 gawk iproute2 libcurl4-openssl-dev bzip2 libpci-dev libc6-dev libc6-dev-i386 linux-libc-dev zlib1g-dev libncurses5-dev patch libvncserver-dev libssl-dev libsdl-dev iasl libbz2-dev e2fslibs-dev ocaml libx11-dev bison flex ocaml-findlib xz-utils gettext libyajl-dev libpixman-1-dev libaio-dev libfdt-dev cabextract libglib2.0-dev autoconf automake libtool libjson-c-dev libfuse-dev liblzma-dev autoconf-archive kpartx python3-pip libsystemd-dev cmake snap gcc-multilib nasm binutils bc libunwind-dev ninja-build
 
 wget -O /usr/local/go1.15.3.linux-amd64.tar.gz https://golang.org/dl/go1.15.3.linux-amd64.tar.gz
 tar -C /usr/local -xzf /usr/local/go1.15.3.linux-amd64.tar.gz
