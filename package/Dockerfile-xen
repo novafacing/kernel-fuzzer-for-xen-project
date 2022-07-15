@@ -11,7 +11,6 @@ RUN mkdir -p /log && \
     sh /tmp/depends.sh
 
 COPY xen /build-xen
-COPY package/patch-xen.sh /build-xen
 COPY package/configure-xen.sh /build-xen
 RUN cd /build-xen && \
     chmod +x configure-xen.sh && \
