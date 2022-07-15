@@ -12,7 +12,7 @@ RUN export INSTALL_PATH="/build/usr" && \
     ldconfig
 RUN export INSTALL_PATH="/build/usr" && \
     cd /build/capstone && \
-    mkdir build && cd build && \
+    cd build && \
     cmake .. && \
     make && \
     make install && \
