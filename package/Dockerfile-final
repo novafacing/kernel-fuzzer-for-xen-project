@@ -9,7 +9,6 @@ RUN export INSTALL_PATH="/build/usr" && \
     ./configure --disable-kvm --disable-bareflank --disable-file && \
     make -j$(nproc) && \
     make install && \
-    rm /build/usr/lib/libvmi.la && \
     ldconfig
 RUN export INSTALL_PATH="/build/usr" && \
     cd /build/capstone && \
