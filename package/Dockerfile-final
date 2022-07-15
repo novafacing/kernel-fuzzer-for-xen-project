@@ -10,13 +10,6 @@ RUN export INSTALL_PATH="/build/usr" && \
     make -j$(nproc) && \
     make install && \
     ldconfig
-RUN export INSTALL_PATH="/build/usr" && \
-    cd /build/capstone && \
-    cd build && \
-    cmake .. && \
-    make && \
-    make install && \
-    ldconfig
     
 RUN export INSTALL_PATH="/build/usr" && \
     cd /build/capstone && \
