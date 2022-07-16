@@ -16,13 +16,13 @@ RUN export INSTALL_PATH="/build/usr" && \
     mkdir build && cd build && \
     cmake .. && \
     make && \
-    make --prefix=$INSTALL_PATH install && \
+    make prefix=$INSTALL_PATH install && \
     ldconfig
     
 
 RUN export INSTALL_PATH="/build/usr" && \
     cd /build/libxdc && \
-    make --prefix=$INSTALL_PATH install
+    make prefix=$INSTALL_PATH install
     
 
 RUN export INSTALL_PATH="/build/usr" && \
@@ -34,7 +34,7 @@ RUN export INSTALL_PATH="/build/usr" && \
     export LDFLAGS="-L$INSTALL_PATH/lib" && \
     export CFLAGS="-I$INSTALL_PATH/include" && \
     autoreconf -vif && \
-    ./configure--prefix=$INSTALL_PATH && \
+    ./configure --prefix=$INSTALL_PATH && \
     make -j$(nproc) && \
     make  install
 
