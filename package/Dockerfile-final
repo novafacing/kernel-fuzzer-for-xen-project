@@ -6,7 +6,7 @@ RUN cd /build/dwarf2json && \
 RUN export INSTALL_PATH="/build/usr" && \
     cd /build/libvmi && \
     autoreconf -vif && \
-    ./configure --disable-kvm --disable-bareflank --disable-file && \
+    ./configure --prefix=$INSTALL_PATH --disable-kvm --disable-bareflank --disable-file && \
     make -j$(nproc) && \
     make install && \
     ldconfig
@@ -16,13 +16,13 @@ RUN export INSTALL_PATH="/build/usr" && \
     mkdir build && cd build && \
     cmake .. && \
     make && \
-    make install && \
+    make DESTDIR=/build/usr install && \
     ldconfig
     
 
 RUN export INSTALL_PATH="/build/usr" && \
     cd /build/libxdc && \
-    make install
+    make DESTDIR=/build/usr install
     
 
 RUN export INSTALL_PATH="/build/usr" && \
@@ -34,7 +34,7 @@ RUN export INSTALL_PATH="/build/usr" && \
     export LDFLAGS="-L$INSTALL_PATH/lib" && \
     export CFLAGS="-I$INSTALL_PATH/include" && \
     autoreconf -vif && \
-    ./configure && \
+    ./configure--prefix=$INSTALL_PATH && \
     make -j$(nproc) && \
     make install
 
