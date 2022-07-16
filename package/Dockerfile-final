@@ -16,13 +16,13 @@ RUN export INSTALL_PATH="/build/usr" && \
     mkdir build && cd build && \
     cmake .. && \
     make && \
-    make DESTDIR=/build/usr install && \
+    make --prefix=$INSTALL_PATH install && \
     ldconfig
     
 
 RUN export INSTALL_PATH="/build/usr" && \
     cd /build/libxdc && \
-    make DESTDIR=/build/usr install
+    make --prefix=$INSTALL_PATH install
     
 
 RUN export INSTALL_PATH="/build/usr" && \
@@ -36,7 +36,7 @@ RUN export INSTALL_PATH="/build/usr" && \
     autoreconf -vif && \
     ./configure--prefix=$INSTALL_PATH && \
     make -j$(nproc) && \
-    make install
+    make  install
 
 WORKDIR /build
 RUN chmod +x package/mkdeb
