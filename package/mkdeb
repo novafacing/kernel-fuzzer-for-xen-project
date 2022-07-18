@@ -106,6 +106,6 @@ cp -avr /build/dwarf2json/dwarf2json deb/usr/bin/
 
 # Package it up
 chown -R root:root deb
-dpkg-deb --build -z0 deb "kfx-bundle-1-$distro.deb"
+dpkg-deb --build -z0 deb "drakvuf-bundle-$version-$distro.deb"
 mv *.deb /out
 rm -rf deb
