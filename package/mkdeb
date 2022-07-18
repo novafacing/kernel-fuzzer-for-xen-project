@@ -15,14 +15,19 @@ if [ "$2" = "" ]
 then
     version=$(grep 'PACKAGE_VERSION' 'src/Makefile' | head -n 1 | cut -f2 "-d=" | xargs echo -n)
     echo "Auto-detected version: $version"
+    echo "NK1"
     echo $version
     if [ "$version" = "" ]
     then
         echo "Unable to recognize package version automatically, please provide it explicitly by the command line:"
+        echo "NK2"
+        echo $version
        echo "package/mkdeb <distro> <version>"
     fi
 else
     version="$2"
+    echo "NK3"
+    echo $version
     echo "Using version: $version"
 fi
 
