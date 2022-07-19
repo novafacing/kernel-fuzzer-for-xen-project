@@ -59,7 +59,7 @@ Conflicts: xen-hypervisor-4.6-amd64, xen-hypervisor-4.7-amd64, xen-hypervisor-4.
 Section: admin
 Priority: optional
 Installed-Size: $(du -ks deb | cut -f1)
-Description: Xen Hypervisor built for DRAKVUF
+Description: Xen Hypervisor built for KFX
 EOF
 
 mkdir -p deb/etc/default/grub.d/
@@ -80,7 +80,7 @@ chown -R root:root deb
 dpkg-deb --build -z0 deb "xen-hypervisor-$xenversion-$distro-amd64.deb"
 mv *.deb /out
 
-## DRAKVUF, LibVMI & tools
+## KFX, LibVMI & tools
 
 # Fill in the debian boilerplate
 mkdir -p deb/DEBIAN
@@ -111,10 +111,7 @@ cp -avr /build/dwarf2json/dwarf2json deb/usr/bin/
 
 # Package it up
 chown -R root:root deb
-echo "Neelima"
-echo $version
-echo "Krishnan"
 echo $distro
-dpkg-deb --build -z0 deb "drakvuf-bundle-$version-$distro.deb"
+dpkg-deb --build -z0 deb "kfx-bundle-$version-$distro.deb"
 mv *.deb /out
 rm -rf deb
