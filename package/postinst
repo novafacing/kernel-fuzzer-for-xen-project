@@ -53,16 +53,4 @@ else
     ! xl dmesg | grep -q -- '- Extended Page Tables' || EPT_SUPPORTED=$?
 fi
 
-if [[ $EPT_SUPPORTED -eq 0 ]]
-then
-    echo "------------------------------------------------------------------------" >&2
-    echo "" >&2
-    echo "Your processor doesn't seem to support Extended Page Tables (Intel EPT) " >&2
-    echo "DRAKVUF may not work properly on your machine." >&2
-    echo "" >&2
-    echo "------------------------------------------------------------------------" >&2
-else
-    echo "Intel EPT is supported by your CPU" >&2
-fi
-
 exit 0
