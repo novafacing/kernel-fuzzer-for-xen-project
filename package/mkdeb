@@ -13,7 +13,7 @@ fi
 
 if [ "$2" = "" ]
 then
-    version=$(grep 'PACKAGE_VERSION' 'src/Makefile' | head -n 1 | cut -f2 "-d=" | xargs echo -n)
+    version=$(grep 'PACKAGE_VERSION' 'Makefile' | head -n 1 | cut -f2 "-d=" | xargs echo -n)
     echo "Auto-detected version: $version"
     echo "NK1"
     echo $version
