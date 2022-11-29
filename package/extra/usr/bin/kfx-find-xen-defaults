@@ -1,0 +1,39 @@
+#!/bin/sh
+
+set -e
+
+IS_XEN=0
+xen-detect -N || IS_XEN=$?
+
+if [ $IS_XEN = 1 ]
+then
+    KFX_TOTAL_CPU=$(xl info | grep nr_cpus | cut -f2 '-d:' | xargs)
+    KFX_TOTAL_RAM=$(xl info | grep total_memory | cut -f2 '-d:' | xargs)
+else
+    KFX_TOTAL_CPU=$(nproc --all)
+    KFX_TOTAL_RAM=$(($(getconf _PHYS_PAGES) * $(getconf PAGE_SIZE) / (1024 * 1024)))
+fi
+
+if [ -z "$KFX_DOM0_CPU" ]
+then
+    if [ $IS_XEN = 1 ]
+    then
+        KFX_TOTAL_CPU=$(xl info | grep nr_cpus | cut -f2 '-d:' | xargs)
+    else
+        KFX_TOTAL_CPU=$(nproc --all)
+    fi
+
+    KFX_DOM0_CPU=$(expr "$KFX_TOTAL_CPU" / 2)
+fi
+
+if [ -z "$KFX_DOM0_RAM" ]
+then
+    if [ $IS_XEN = 1 ]
+    then
+        KFX_TOTAL_RAM=$(xl info | grep total_memory | cut -f2 '-d:' | xargs)
+    else
+        KFX_TOTAL_RAM=$(($(getconf _PHYS_PAGES) * $(getconf PAGE_SIZE) / (1024 * 1024)))
+    fi
+
+    KFX_DOM0_RAM=$(expr "$KFX_TOTAL_RAM" / 2)
+fi
