@@ -39,5 +39,5 @@ else
 fi
 
 echo Building final image...
-docker build -f package/Dockerfile-final -t deb-build . && docker run -v $(pwd)/package/out:/out deb-build ./package/mkdeb $@
+docker build -f package/Dockerfile-final -t deb-build --build-arg 'IMAGE=$IMAGE' . && docker run -v $(pwd)/package/out:/out deb-build ./package/mkdeb $@
 if [ $? -ne 0 ]; then echo Failed to build package ; exit 1 ; fi
