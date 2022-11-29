@@ -3,12 +3,16 @@
 # run ./package/build.sh
 
 IMAGE="ubuntu:20.04"
+VERSION="0.0.0"
 
 if [ ! -z "$1" ]
 then
     IMAGE="$1"
     echo "Overriding base image for build to: $IMAGE"
-    shift
+fi
+
+if [ ! -z "$2" ]; then
+    VERSION="$2"
 fi
 
 XEN_HASH=$(git ls-files -s xen | cut -f2 '-d ')
@@ -38,6 +42,6 @@ else
     if [ $? -ne 0 ]; then echo Failed to load Xen intermediate image ; exit 1 ; fi
 fi
 
-echo Building final image...
-docker build -f package/Dockerfile-final -t deb-build --build-arg 'IMAGE=$IMAGE' . && docker run -v $(pwd)/package/out:/out deb-build ./package/mkdeb $@
+echo Building final image "${IMAGE}" version "${VERSION}"
+docker build -f package/Dockerfile-final -t deb-build --build-arg 'IMAGE=$IMAGE' . && docker run -v $(pwd)/package/out:/out deb-build ./package/mkdeb "${IMAGE}" "${VERSION}"
 if [ $? -ne 0 ]; then echo Failed to build package ; exit 1 ; fi
