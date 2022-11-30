@@ -1,37 +1,33 @@
-#!/bin/sh
+#!/bin/bash
 #
 # mkdeb: package the dist/install output of a Xen build in a .deb
 
 set -e
 
-distro="$1"
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+source "${SCRIPT_DIR}/common.sh"
 
-if [ "$distro" = "" ]
-then
-    distro=generic
+usage() {
+    echo "usage: mkdeb.sh <distro> <version>"
+    echo ""
+    echo "  distro: A distro name, for example 'jammy'"
+    echo "  version: A version string, for example 'v0.0.1'"
+    fail
+}
+
+DISTRO="${1}"
+VERSION="${2}"
+
+if [ -z "${DISTRO}" ]; then
+    usage
 fi
 
-if [ "$2" = "" ]
-then
-    version=$(grep 'PACKAGE_VERSION' 'Makefile' | head -n 1 | cut -f2 "-d=" | xargs echo -n)
-    echo "Auto-detected version: $version"
-    echo "NK1"
-    echo $version
-    if [ "$version" = "" ]
-    then
-        echo "Unable to recognize package version automatically, please provide it explicitly by the command line:"
-        echo "NK2"
-        echo $version
-       echo "package/mkdeb <distro> <version>"
-    fi
-else
-    version="$2"
-    echo "NK3"
-    echo $version
-    echo "Using version: $version"
+if [ -z "${VERSION}" ]; then
+    usage
 fi
 
-arch=amd64
+
+ARCH=amd64
 
 ## BUILD XEN DEB
 
@@ -44,15 +40,15 @@ if test -d deb/usr/lib64 ; then
   rm -rf deb/usr/lib64
 fi
 
-xenversion=$(ls deb/boot/*.config | xargs basename | awk -F'\.c' '{print $1}' | awk -F'-' '{print $2}')
+XENVERSION=$(ls deb/boot/*.config | xargs basename | awk -F'\.c' '{print $1}' | awk -F'-' '{print $2}')
 
 # Fill in the debian boilerplate
 mkdir -p deb/DEBIAN
 cat >deb/DEBIAN/control <<EOF
 Package: xen-hypervisor
 Source: xen-hypervisor
-Version: $xenversion
-Architecture: $arch
+Version: $XENVERSION
+Architecture: $ARCH
 Maintainer: Unmaintained snapshot
 Depends: libpixman-1-0, libpng16-16, libnettle6 | libnettle7, libgnutls30, libfdt1, libyajl2, libaio1
 Conflicts: xen-hypervisor-4.6-amd64, xen-hypervisor-4.7-amd64, xen-hypervisor-4.8-amd64, xen-hypervisor-4.9-amd64, xen-hypervisor-4.10-amd64, xen-hypervisor-4.11-amd64, xen-hypervisor-4.12-amd64
@@ -77,8 +73,10 @@ cp package/postrm deb/DEBIAN/postrm
 
 # Package it up
 chown -R root:root deb
-dpkg-deb --build -z0 deb "xen-hypervisor-$xenversion-$distro-amd64.deb"
+dpkg-deb --build -z0 deb "xen-$DISTRO.deb"
 mv *.deb /out
+
+log_info "Generated xen deb package"
 
 ## KFX, LibVMI & tools
 
@@ -87,8 +85,8 @@ mkdir -p deb/DEBIAN
 cat >deb/DEBIAN/control <<EOF
 Package: kfx-bundle
 Source: kfx-bundle
-Version: $version
-Architecture: $arch
+Version: $VERSION
+Architecture: $ARCH
 Maintainer: Unmaintained snapshot
 Depends: libglib2.0-dev, libjson-c3 | libjson-c4, libpixman-1-0, libpng16-16, libnettle6 | libnettle7, libgnutls30, libfdt1, libyajl2, libaio1
 Conflicts: xen-hypervisor-4.6-amd64, xen-hypervisor-4.7-amd64, xen-hypervisor-4.8-amd64, xen-hypervisor-4.9-amd64, xen-hypervisor-4.10-amd64, xen-hypervisor-4.11-amd64, xen-hypervisor-4.12-amd64
@@ -111,7 +109,8 @@ cp -avr /build/dwarf2json/dwarf2json deb/usr/bin/
 
 # Package it up
 chown -R root:root deb
-echo $distro
-dpkg-deb --build -z0 deb "kfx-bundle-$version-$distro.deb"
+dpkg-deb --build -z0 deb "kfx-$DISTRO.deb"
 mv *.deb /out
 rm -rf deb
+
+log_info "Generated kfx deb package"

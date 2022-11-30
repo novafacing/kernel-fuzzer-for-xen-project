@@ -18,3 +18,5 @@ compile
 depcomp
 install-sh
 missing
+target
+Cargo.lock
