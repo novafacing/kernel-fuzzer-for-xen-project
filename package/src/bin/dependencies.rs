@@ -16,7 +16,7 @@ use std::{
 };
 
 use log::{debug, info};
-use scripts::{
+use package::{
     append_line, check_command, download, init_logging, read_os_release, replace_text, unpack_tgz,
 };
 

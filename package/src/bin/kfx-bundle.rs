@@ -4,7 +4,7 @@ use std::{
     collections::HashMap,
     env::var,
     error::Error,
-    fs::{copy, create_dir_all, File},
+    fs::{copy, create_dir, create_dir_all, remove_dir_all, File},
     io::Write,
     path::PathBuf,
     process::{Command, Stdio},
@@ -13,7 +13,7 @@ use std::{
 use log::{error, info};
 use num_cpus::get as nproc;
 
-use scripts::{
+use package::{
     check_command, copy_dir, dir_size, get_dpkg_arch, init_logging, read_os_release, DebControl,
 };
 
@@ -285,8 +285,8 @@ fn build_kfx() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn make_deb() -> Result<(), Box<dyn Error>> {
-    info!("Making deb for kfx");
+fn make_bundle_deb() -> Result<(), Box<dyn Error>> {
+    info!("Making deb for kfx bundle");
     let version = var("KFX_VERSION")?;
     let arch = get_dpkg_arch()?;
     let distro = read_os_release()?
@@ -297,6 +297,126 @@ fn make_deb() -> Result<(), Box<dyn Error>> {
     let deb_dir = PathBuf::from(DEB_PATH);
     let usr_dir = deb_dir.join("usr");
     let debian_dir = deb_dir.join("DEBIAN");
+
+    let deb_out_dir = PathBuf::from(OUT_DIR);
+    create_dir_all(&deb_out_dir)?;
+    let deb_out_file =
+        deb_out_dir.join(format!("kfx-bundle_{}-{}-{}.deb", &version, &distro, &arch));
+
+    let install_dir = PathBuf::from(INSTALL_PATH);
+
+    info!("Creating directories for deb");
+
+    copy_dir(&install_dir, &usr_dir)?;
+
+    copy(
+        &PathBuf::from("dwarf2json/dwarf2json"),
+        &usr_dir.join("bin").join("dwarf2json"),
+    )?;
+
+    info!("Done copying files to deb");
+
+    let deb_dir_size = dir_size(&deb_dir)?;
+
+    info!("Deb directory size: {} KB", deb_dir_size);
+
+    let deb_control = DebControl::new(
+        "kfx".to_string(),
+        "kfx".to_string(),
+        version.clone(),
+        arch.clone(),
+        "Unmaintained <unmaintained@example.com>".to_string(),
+        vec![
+            "libglib2.0-dev".to_string(),
+            "libjson-c3 | libjson-c4 | libjson-c5".to_string(),
+            "libpixman-1-0".to_string(),
+            "libpng16-16".to_string(),
+            "libnettle6 | libnettle7".to_string(),
+            "libgnutls30".to_string(),
+            "libfdt1".to_string(),
+            "libyajl2".to_string(),
+            "libaio1".to_string(),
+            // Dependencies for kfx packages
+            "libc6".to_string(),
+            "libfuse2".to_string(),
+            "liblzma5".to_string(),
+            "libpcre3".to_string(),
+            "libunwind8".to_string(),
+            "zlib1g".to_string(),
+        ],
+        (9..16) // Add additional Xen versions here as they are released
+            .map(|v| format!("xen-hypervisor-4.{}-{}", v, &arch))
+            .collect(),
+        "admin".to_string(),
+        "optional".to_string(),
+        deb_dir_size as usize,
+        "Xen Hypervisor for KF/x".to_string(),
+    );
+
+    let deb_control_file = debian_dir.join("control");
+    let mut deb_control_file = File::create(&deb_control_file)?;
+    deb_control_file.write_all(deb_control.to_string().as_bytes())?;
+    deb_control_file.write_all(b"\n")?;
+
+    info!("Setting permissions for deb");
+
+    check_command(
+        Command::new("chown")
+            .arg("-R")
+            .arg("root:root")
+            .arg(&deb_dir)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("Failed to run chown")
+            .wait_with_output(),
+    )?;
+
+    info!("Creating deb for {} {}", &version, &arch);
+
+    check_command(
+        Command::new("dpkg-deb")
+            .arg("--build")
+            .arg("-z0")
+            .arg(&deb_dir)
+            .arg(&deb_out_file)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("Failed to run dpkg-deb")
+            .wait_with_output(),
+    )
+    .map_err(|e| {
+        error!("Failed to build deb package: {}", e);
+        error!("Deb control file: {}", deb_control.to_string());
+        e
+    })?;
+
+    info!("Done! Created deb at {}", deb_out_file.display());
+
+    remove_dir_all(&deb_dir)?;
+
+    Ok(())
+}
+
+/// Create a deb package for all KF/x components *except* Xen itself
+/// This has to be run after `make_bundle_deb` because it reuses the
+/// same directory and expects it to be gone
+fn make_kfx_deb() -> Result<(), Box<dyn Error>> {
+    info!("Making deb for kfx bundle");
+    let version = var("KFX_VERSION")?;
+    let arch = get_dpkg_arch()?;
+    let distro = read_os_release()?
+        .get("VERSION_CODENAME")
+        .expect("No version codename in /etc/os-release")
+        .to_string();
+
+    let deb_dir = PathBuf::from(DEB_PATH);
+    create_dir_all(&deb_dir)?;
+    let usr_dir = deb_dir.join("usr");
+    create_dir_all(&usr_dir)?;
+    let debian_dir = deb_dir.join("DEBIAN");
+    create_dir_all(&debian_dir)?;
 
     let deb_out_dir = PathBuf::from(OUT_DIR);
     create_dir_all(&deb_out_dir)?;
@@ -326,19 +446,34 @@ fn make_deb() -> Result<(), Box<dyn Error>> {
         arch.clone(),
         "Unmaintained <unmaintained@example.com>".to_string(),
         vec![
-            "libglib2.0-dev".to_string(),
-            "libjson-c3 | libjson-c4".to_string(),
-            "libpixman-1-0".to_string(),
-            "libpng16-16".to_string(),
-            "libnettle6 | libnettle7".to_string(),
-            "libgnutls30".to_string(),
-            "libfdt1".to_string(),
-            "libyajl2".to_string(),
-            "libaio1".to_string(),
+            // Dependencies are:
+            // libc.so.6: libc6
+            // libcapstone.so.4: provided by this package
+            // libfuse.so.2: libfuse2
+            // libglib-2.0.so.0: libglib2.0-0
+            // libjson-c.so.5: libjson-c3 | libjson-c4 | libjson-c5
+            // liblzma.so.5: liblzma5
+            // libm.so.6: libc6
+            // libpcre.so.3: libpcre3
+            // libunwind-x86_64.so.8: libunwind8
+            // libunwind.so.8: libunwind8
+            // libvmi.so.0: provided by this package
+            // libxenctrl.so.4.16: provided by the xen package or bundle version
+            // libxenforeignmemory.so.1: provided by the xen package or bundle version
+            // libxenlight.so.4.16: provided by the xen package or bundle version
+            // libxenstore.so.4: provided by the xen package or bundle version
+            // libz.so.1: zlib1g
+            // linux-vdso.so.1: provided by the kernel
+            "libc6".to_string(),
+            "libfuse2".to_string(),
+            "libglib2.0-0".to_string(),
+            "libjson-c3 | libjson-c4 | libjson-c5".to_string(),
+            "liblzma5".to_string(),
+            "libpcre3".to_string(),
+            "libunwind8".to_string(),
+            "zlib1g".to_string(),
         ],
-        (9..16) // Add additional Xen versions here as they are released
-            .map(|v| format!("xen-hypervisor-4.{}-{}", v, &arch))
-            .collect(),
+        vec![],
         "admin".to_string(),
         "optional".to_string(),
         deb_dir_size as usize,
@@ -396,6 +531,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     build_capstone()?;
     build_libxdc()?;
     build_kfx()?;
-    make_deb()?;
+    make_bundle_deb()?;
+    make_kfx_deb()?;
     Ok(())
 }

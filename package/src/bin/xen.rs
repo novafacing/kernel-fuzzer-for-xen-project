@@ -3,7 +3,7 @@
 use std::{
     collections::HashSet,
     error::Error,
-    fs::{create_dir_all, read_dir, remove_dir_all, rename, set_permissions, File, Permissions},
+    fs::{create_dir_all, remove_dir_all, rename, set_permissions, File, Permissions},
     io::Write,
     os::unix::prelude::PermissionsExt,
     path::PathBuf,
@@ -11,7 +11,7 @@ use std::{
 };
 
 use log::{error, info};
-use scripts::{
+use package::{
     append_line, check_command, copy_dir, dir_size, get_dpkg_arch, init_logging, read_os_release,
     DebControl,
 };
@@ -153,12 +153,12 @@ fn build_xen() -> Result<(), Box<dyn Error>> {
 }
 
 fn make_deb() -> Result<(), Box<dyn Error>> {
-    const XEN_CFG_FILE: &[u8] = include_bytes!("../resource/etc/default/grub.d/xen.cfg");
-    const XEN_CONF_FILE: &[u8] = include_bytes!("../resource/etc/modules-load.d/xen.conf");
+    const XEN_CFG_FILE: &[u8] = include_bytes!("../../resource/etc/default/grub.d/xen.cfg");
+    const XEN_CONF_FILE: &[u8] = include_bytes!("../../resource/etc/modules-load.d/xen.conf");
     const KFX_FIND_XEN_DEFAULTS_FILE: &[u8] =
-        include_bytes!("../resource/usr/bin/kfx-find-xen-defaults");
-    const POSTINST_FILE: &[u8] = include_bytes!("../resource/postinst");
-    const POSTRM_FILE: &[u8] = include_bytes!("../resource/postrm");
+        include_bytes!("../../resource/usr/bin/kfx-find-xen-defaults");
+    const POSTINST_FILE: &[u8] = include_bytes!("../../resource/postinst");
+    const POSTRM_FILE: &[u8] = include_bytes!("../../resource/postrm");
 
     let xenversion = get_xenversion()?;
 
@@ -193,7 +193,6 @@ fn make_deb() -> Result<(), Box<dyn Error>> {
 
     match distro.as_str() {
         "debian" => {
-            let lib64_entries = read_dir(&deb_dir.join("usr/lib64"))?;
             let lib_dir = deb_dir.join("usr/lib");
             copy_dir(&deb_dir.join("usr/lib64"), &lib_dir)?;
 
