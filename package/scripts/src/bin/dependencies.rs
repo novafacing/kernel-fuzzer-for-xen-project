@@ -15,7 +15,10 @@ use std::{
     process::{Command, Stdio},
 };
 
-use scripts::{append_line, download, read_os_release, replace_text, unpack_tgz};
+use log::{debug, info};
+use scripts::{
+    append_line, check_command, download, init_logging, read_os_release, replace_text, unpack_tgz,
+};
 
 /// List of base dependencies for KF/x install. Some distros may add or
 /// remove from this list depending on their available packages.
@@ -88,16 +91,18 @@ const BASE_DEPENDENCIES: &[&str] = &[
 /// Check if this distro has a `python-is-python2` package
 fn has_python_is_python2() -> Result<bool, Box<dyn Error>> {
     Ok(String::from_utf8_lossy(
-        &Command::new("apt-cache")
-            .arg("search")
-            .arg("--names-only")
-            .arg("^python-is-python2$")
-            .stdout(Stdio::piped())
-            .spawn()
-            .expect("Could not run apt-cache command")
-            .wait_with_output()
-            .expect("apt-cache command failed")
-            .stdout,
+        &check_command(
+            Command::new("apt-cache")
+                .arg("search")
+                .arg("--names-only")
+                .arg("^python-is-python2$")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .expect("Could not run apt-cache command")
+                .wait_with_output(),
+        )?
+        .stdout,
     )
     .to_lowercase()
     .contains("python-is-python2"))
@@ -105,47 +110,63 @@ fn has_python_is_python2() -> Result<bool, Box<dyn Error>> {
 
 /// Run the apt install process including autoremove and clean to reduce image size
 fn run_apt(dependencies: &HashSet<String>) -> Result<(), Box<dyn Error>> {
-    Command::new("apt-get")
-        .arg("-y")
-        .arg("update")
-        .spawn()
-        .expect("Failed to run apt-get update")
-        .wait()
-        .expect("apt-get update failed");
+    debug!("Installing with dependencies: {:?}", dependencies);
 
-    Command::new("apt-get")
-        .arg("-y")
-        .arg("install")
-        .args(dependencies)
-        .spawn()
-        .expect("Failed to run apt-get install")
-        .wait()
-        .expect("apt-get install failed");
+    check_command(
+        Command::new("apt-get")
+            .arg("-y")
+            .arg("update")
+            .stderr(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("Failed to spawn apt-get update")
+            .wait_with_output(),
+    )?;
 
-    Command::new("apt-get")
-        .arg("-y")
-        .arg("build-dep")
-        .arg("xen")
-        .spawn()
-        .expect("Failed to run apt-get build-dep")
-        .wait()
-        .expect("apt-get build-dep failed");
+    check_command(
+        Command::new("apt-get")
+            .arg("-y")
+            .arg("install")
+            .args(dependencies)
+            .stderr(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("Failed to spawn apt-get install")
+            .wait_with_output(),
+    )?;
+    check_command(
+        Command::new("apt-get")
+            .arg("-y")
+            .arg("build-dep")
+            .arg("xen")
+            .stderr(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("Failed to spawn apt-get build-dep")
+            .wait_with_output(),
+    )?;
 
-    Command::new("apt-get")
-        .arg("-y")
-        .arg("autoremove")
-        .spawn()
-        .expect("Failed to run apt-get autoremove")
-        .wait()
-        .expect("apt-get autoremove failed");
+    check_command(
+        Command::new("apt-get")
+            .arg("-y")
+            .arg("autoremove")
+            .stderr(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("Failed to spawn apt-get autoremove")
+            .wait_with_output(),
+    )?;
 
-    Command::new("apt-get")
-        .arg("-y")
-        .arg("clean")
-        .spawn()
-        .expect("Failed to run apt-get clean")
-        .wait()
-        .expect("apt-get clean failed");
+    check_command(
+        Command::new("apt-get")
+            .arg("-y")
+            .arg("clean")
+            .stderr(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("Failed to spawn apt-get clean")
+            .wait_with_output(),
+    )?;
 
     Ok(())
 }
@@ -162,30 +183,32 @@ fn install_apt_deps() -> Result<(), Box<dyn Error>> {
         .expect("No version codename in os release file.")
         .to_lowercase();
 
+    info!("Installing with distro '{}:{}'", distro, version);
+
     let mut dependencies: HashSet<String> =
         BASE_DEPENDENCIES.iter().map(|d| d.to_string()).collect();
 
     match (distro.as_str(), version.as_str()) {
         ("debian", _) => {
             append_line(
-                PathBuf::from("/etc/apt/sources.list"),
+                &PathBuf::from("/etc/apt/sources.list"),
                 format!("deb-src http://deb.debian.org/debian {} main", version),
             )?;
         }
         ("ubuntu", "jammy") => {
             replace_text(
-                PathBuf::from("/etc/apt/sources.list"),
-                "# deb-src",
-                "deb-src",
-            )?;
-        }
-        ("ubuntu", _) => {
-            replace_text(
-                PathBuf::from("/etc/apt/sources.list"),
+                &PathBuf::from("/etc/apt/sources.list"),
                 "# deb-src",
                 "deb-src",
             )?;
             dependencies.remove("libsdl-dev");
+        }
+        ("ubuntu", _) => {
+            replace_text(
+                &PathBuf::from("/etc/apt/sources.list"),
+                "# deb-src",
+                "deb-src",
+            )?;
         }
         _ => {}
     }
@@ -203,12 +226,16 @@ fn install_apt_deps() -> Result<(), Box<dyn Error>> {
 fn install_golang() -> Result<(), Box<dyn Error>> {
     const GO_URL: &str = "https://golang.org/dl/go1.15.3.linux-amd64.tar.gz";
     let go_file = temp_dir().join("go.tar.gz");
-    download(GO_URL, go_file.clone())?;
-    unpack_tgz(go_file, PathBuf::from("/usr/local"))?;
+    info!("Downloading golang");
+    download(GO_URL, &go_file)?;
+    info!("Unpacking golang");
+    unpack_tgz(&go_file, &PathBuf::from("/usr/local"))?;
     Ok(())
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    init_logging()?;
+    info!("Installing dependencies");
     install_apt_deps()?;
     install_golang()?;
     Ok(())
