@@ -1,12 +1,3 @@
-//! Script to install dependencies for building:
-//! * Xen
-//! * AFL
-//! * dwarf2json
-//! * libvmi
-//! * capstone
-//! * libxdc
-//! * KF/x
-
 use std::{
     collections::HashSet,
     env::temp_dir,
@@ -15,15 +6,14 @@ use std::{
     process::{Command, Stdio},
 };
 
-use log::{debug, info};
-use package::{
-    append_line, check_command, download, init_logging, read_os_release, replace_text, unpack_tgz,
+use crate::{
+    append_line, check_command, download, get_distro, get_version, replace_text, unpack_tgz,
 };
+use log::{debug, info};
 
 /// List of base dependencies for KF/x install. Some distros may add or
 /// remove from this list depending on their available packages.
 const BASE_DEPENDENCIES: &[&str] = &[
-    "autoconf",
     "autoconf",
     "autoconf-archive",
     "automake",
@@ -89,7 +79,7 @@ const BASE_DEPENDENCIES: &[&str] = &[
 ];
 
 /// Check if this distro has a `python-is-python2` package
-fn has_python_is_python2() -> Result<bool, Box<dyn Error>> {
+pub fn has_python_is_python2() -> Result<bool, Box<dyn Error>> {
     Ok(String::from_utf8_lossy(
         &check_command(
             Command::new("apt-cache")
@@ -109,7 +99,7 @@ fn has_python_is_python2() -> Result<bool, Box<dyn Error>> {
 }
 
 /// Run the apt install process including autoremove and clean to reduce image size
-fn run_apt(dependencies: &HashSet<String>) -> Result<(), Box<dyn Error>> {
+pub fn run_apt(dependencies: &HashSet<String>) -> Result<(), Box<dyn Error>> {
     debug!("Installing with dependencies: {:?}", dependencies);
 
     check_command(
@@ -172,16 +162,9 @@ fn run_apt(dependencies: &HashSet<String>) -> Result<(), Box<dyn Error>> {
 }
 
 /// Configure apt dependencies for the current distro and install them
-fn install_apt_deps() -> Result<(), Box<dyn Error>> {
-    let os_release = read_os_release()?;
-    let distro = os_release
-        .get("ID")
-        .expect("No distro in os release file.")
-        .to_lowercase();
-    let version = os_release
-        .get("VERSION_CODENAME")
-        .expect("No version codename in os release file.")
-        .to_lowercase();
+pub fn install_apt_deps() -> Result<(), Box<dyn Error>> {
+    let distro = get_distro()?;
+    let version = get_version()?;
 
     info!("Installing with distro '{}:{}'", distro, version);
 
@@ -223,20 +206,12 @@ fn install_apt_deps() -> Result<(), Box<dyn Error>> {
 }
 
 /// Download and unpack golang tarball
-fn install_golang() -> Result<(), Box<dyn Error>> {
+pub fn install_golang() -> Result<(), Box<dyn Error>> {
     const GO_URL: &str = "https://golang.org/dl/go1.15.3.linux-amd64.tar.gz";
     let go_file = temp_dir().join("go.tar.gz");
     info!("Downloading golang");
     download(GO_URL, &go_file)?;
     info!("Unpacking golang");
     unpack_tgz(&go_file, &PathBuf::from("/usr/local"))?;
-    Ok(())
-}
-
-fn main() -> Result<(), Box<dyn Error>> {
-    init_logging()?;
-    info!("Installing dependencies");
-    install_apt_deps()?;
-    install_golang()?;
     Ok(())
 }

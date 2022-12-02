@@ -10,14 +10,22 @@ use std::{
     process::{Command, Stdio},
 };
 
-use log::{error, info};
-use package::{
-    append_line, check_command, copy_dir, dir_size, get_dpkg_arch, init_logging, read_os_release,
-    DebControl,
+use crate::{
+    append_line, check_command, copy_dir, dir_size, get_distro, get_dpkg_arch, get_version,
+    read_os_release, write_file, DebControl,
 };
+use log::{error, info};
 
 use num_cpus::get as nproc;
+use tempdir::TempDir;
 use walkdir::WalkDir;
+
+const XEN_CFG_FILE: &[u8] = include_bytes!("../resource/etc/default/grub.d/xen.cfg");
+const XEN_CONF_FILE: &[u8] = include_bytes!("../resource/etc/modules-load.d/xen.conf");
+const KFX_FIND_XEN_DEFAULTS_FILE: &[u8] =
+    include_bytes!("../resource/usr/bin/kfx-find-xen-defaults");
+const POSTINST_FILE: &[u8] = include_bytes!("../resource/postinst");
+const POSTRM_FILE: &[u8] = include_bytes!("../resource/postrm");
 
 const BASE_CONFIGURE_OPTIONS: &[&str] = &[
     "--enable-systemd",
@@ -26,8 +34,8 @@ const BASE_CONFIGURE_OPTIONS: &[&str] = &[
     "--prefix=/usr",
 ];
 
-fn get_xenversion() -> Result<String, Box<dyn Error>> {
-    let boot_dir = PathBuf::from("dist/install/boot");
+fn get_xenversion(xen_path: &PathBuf) -> Result<String, Box<dyn Error>> {
+    let boot_dir = xen_path.join("dist/install/boot");
     for entry in boot_dir.read_dir()? {
         let entry = entry?;
         let path = entry.path();
@@ -46,7 +54,7 @@ fn get_xenversion() -> Result<String, Box<dyn Error>> {
     Err("No xen version found in dist/install/boot")?
 }
 
-fn configure_xen() -> Result<(), Box<dyn Error>> {
+pub fn configure_xen(xen_path: &PathBuf) -> Result<(), Box<dyn Error>> {
     let os_release = read_os_release()?;
 
     let mut configure_options: HashSet<String> = BASE_CONFIGURE_OPTIONS
@@ -70,6 +78,7 @@ fn configure_xen() -> Result<(), Box<dyn Error>> {
             .args(configure_options)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .current_dir(&xen_path)
             .spawn()
             .expect("Could not run configure command")
             .wait_with_output(),
@@ -77,19 +86,21 @@ fn configure_xen() -> Result<(), Box<dyn Error>> {
 
     info!("Writing xen/.config");
 
-    let xenconfig_file = PathBuf::from("xen/.config");
+    let xenconfig_file = xen_path.join("xen/.config");
     append_line(&xenconfig_file, "CONFIG_EXPERT=y".to_string())?;
     append_line(&xenconfig_file, "CONFIG_MEM_SHARING=y".to_string())?;
 
     Ok(())
 }
 
-fn build_xen() -> Result<(), Box<dyn Error>> {
+pub fn build_xen(xen_path: &PathBuf) -> Result<(), Box<dyn Error>> {
+    let xen_subdir_path = xen_path.join("xen");
+
     info!("Making olddefconfig");
     check_command(
         Command::new("make")
-            .current_dir(PathBuf::from("xen"))
             .arg("olddefconfig")
+            .current_dir(&xen_subdir_path)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -103,6 +114,7 @@ fn build_xen() -> Result<(), Box<dyn Error>> {
             .arg("-j")
             .arg(nproc().to_string())
             .arg("dist-xen")
+            .current_dir(&xen_path)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -116,6 +128,7 @@ fn build_xen() -> Result<(), Box<dyn Error>> {
             .arg("-j")
             .arg(nproc().to_string())
             .arg("dist-tools")
+            .current_dir(&xen_path)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -129,6 +142,7 @@ fn build_xen() -> Result<(), Box<dyn Error>> {
             .arg("-j")
             .arg(nproc().to_string())
             .arg("install-xen")
+            .current_dir(&xen_path)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -142,6 +156,7 @@ fn build_xen() -> Result<(), Box<dyn Error>> {
             .arg("-j")
             .arg(nproc().to_string())
             .arg("install-tools")
+            .current_dir(&xen_path)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -152,45 +167,33 @@ fn build_xen() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn make_deb() -> Result<(), Box<dyn Error>> {
-    const XEN_CFG_FILE: &[u8] = include_bytes!("../../resource/etc/default/grub.d/xen.cfg");
-    const XEN_CONF_FILE: &[u8] = include_bytes!("../../resource/etc/modules-load.d/xen.conf");
-    const KFX_FIND_XEN_DEFAULTS_FILE: &[u8] =
-        include_bytes!("../../resource/usr/bin/kfx-find-xen-defaults");
-    const POSTINST_FILE: &[u8] = include_bytes!("../../resource/postinst");
-    const POSTRM_FILE: &[u8] = include_bytes!("../../resource/postrm");
+pub fn make_deb(xen_path: &PathBuf, output_path: &PathBuf) -> Result<(), Box<dyn Error>> {
+    let xenversion = get_xenversion(xen_path)?;
+    let distro = get_distro()?;
+    let version = get_version()?;
+    let arch = get_dpkg_arch()?;
 
-    let xenversion = get_xenversion()?;
+    let deb_name = format!("xen_{}-{}-{}.deb", &xenversion, &version, &arch);
 
-    let distro = read_os_release()?
-        .get("ID")
-        .expect("No distro id in /etc/os-release")
-        .to_lowercase();
-    let version = read_os_release()?
-        .get("VERSION_CODENAME")
-        .expect("No version codename in /etc/os-release")
-        .to_string()
-        .to_lowercase();
+    let install_dir = xen_path.join("dist/install");
 
-    let deb_out_dir = PathBuf::from("/out");
-    if !deb_out_dir.exists() {
-        create_dir_all(&deb_out_dir)?;
-    }
+    let tmpdir = TempDir::new("deb")?;
+    let deb_dir = tmpdir.path().to_path_buf();
 
-    let install_dir = PathBuf::from("dist/install");
-    let deb_dir = PathBuf::from("/deb");
-    // Rename install to deb
-    rename(&install_dir, &deb_dir)?;
+    // Copy everything in the install dir to the deb dir
+    copy_dir(&install_dir, &deb_dir)?;
 
     // Create the debian directory
     let debian_dir = deb_dir.join("DEBIAN");
-    create_dir_all(&debian_dir)?;
     // Create the grub.d and modules-load.d directories
     let grub_dir = deb_dir.join("etc/default/grub.d");
-    create_dir_all(&grub_dir)?;
     let modules_dir = deb_dir.join("etc/modules-load.d");
+
+    create_dir_all(&debian_dir)?;
+    create_dir_all(&grub_dir)?;
     create_dir_all(&modules_dir)?;
 
+    // Debian doesn't use lib64, ubuntu does
     match distro.as_str() {
         "debian" => {
             let lib_dir = deb_dir.join("usr/lib");
@@ -201,33 +204,17 @@ fn make_deb() -> Result<(), Box<dyn Error>> {
         _ => {}
     }
 
-    // Write the postinst and postrm files to the debian directory
-    let postinst_file = debian_dir.join("postinst");
-    let mut postinst = File::create(&postinst_file)?;
-    postinst.write_all(POSTINST_FILE)?;
-    set_permissions(&postinst_file, Permissions::from_mode(0o755))?;
-
-    let postrm_file = debian_dir.join("postrm");
-    let mut postrm = File::create(&postrm_file)?;
-    postrm.write_all(POSTRM_FILE)?;
-    set_permissions(&postrm_file, Permissions::from_mode(0o755))?;
-
-    // Write the xen.cfg file to the grub.d directory
-    let xen_cfg_file = grub_dir.join("xen.cfg");
-    let mut xen_cfg_file = File::create(&xen_cfg_file)?;
-    xen_cfg_file.write_all(XEN_CFG_FILE)?;
-    // Write the xen.conf file to the modules-load.d directory
-    let xen_conf_file = modules_dir.join("xen.conf");
-    let mut xen_conf_file = File::create(&xen_conf_file)?;
-    xen_conf_file.write_all(XEN_CONF_FILE)?;
-    // Write the kfx-find-xen-defaults file to the usr/bin directory
-    let kfx_find_xen_defaults = deb_dir.join("usr/bin/kfx-find-xen-defaults");
-    let mut kfx_find_xen_defaults = File::create(&kfx_find_xen_defaults)?;
-    kfx_find_xen_defaults.write_all(KFX_FIND_XEN_DEFAULTS_FILE)?;
+    write_file(&debian_dir.join("postinst"), POSTINST_FILE, 0o755)?;
+    write_file(&debian_dir.join("postrm"), POSTRM_FILE, 0o755)?;
+    write_file(&grub_dir.join("xen.cfg"), XEN_CFG_FILE, 0o644)?;
+    write_file(&modules_dir.join("xen.conf"), XEN_CONF_FILE, 0o644)?;
+    write_file(
+        &deb_dir.join("usr/bin/kfx-find-xen-defaults"),
+        KFX_FIND_XEN_DEFAULTS_FILE,
+        0o755,
+    )?;
 
     let deb_dir_size = dir_size(&deb_dir)?;
-    let deb_dir_size_kb = deb_dir_size / 1024;
-    let arch = get_dpkg_arch()?;
 
     assert!(deb_dir.exists(), "Install directory does not exist");
 
@@ -251,16 +238,21 @@ fn make_deb() -> Result<(), Box<dyn Error>> {
             .collect(),
         "admin".to_string(),
         "optional".to_string(),
-        deb_dir_size_kb as usize,
+        deb_dir_size as usize,
         "Xen Hypervisor for KF/x".to_string(),
     );
 
     let deb_control_file = debian_dir.join("control");
     let mut deb_control_file = File::create(&deb_control_file)?;
     deb_control_file.write_all(deb_control.to_string().as_bytes())?;
-    deb_control_file.write_all(b"\n")?;
 
-    let etc_dir = deb_dir.join("etc").canonicalize()?;
+    write_file(
+        &debian_dir.join("control"),
+        deb_control.to_string().as_bytes(),
+        0o644,
+    )?;
+
+    let etc_dir = deb_dir.join("etc");
 
     let conffiles = WalkDir::new(&etc_dir)
         .into_iter()
@@ -273,12 +265,10 @@ fn make_deb() -> Result<(), Box<dyn Error>> {
                 .to_string()
         })
         .collect::<Vec<String>>()
-        .join("\n");
+        .join("\n")
+        + "\n";
 
-    let deb_conffiles_file = debian_dir.join("conffiles");
-    let mut deb_conffiles_file = File::create(&deb_conffiles_file)?;
-    deb_conffiles_file.write_all(conffiles.as_bytes())?;
-    deb_conffiles_file.write_all(b"\n")?;
+    write_file(&debian_dir.join("conffiles"), conffiles.as_bytes(), 0o644)?;
 
     // Amazingly, fs::chown is still experimental
     check_command(
@@ -298,7 +288,7 @@ fn make_deb() -> Result<(), Box<dyn Error>> {
             .arg("--build")
             .arg("-z0")
             .arg(&deb_dir)
-            .arg(&deb_out_dir.join(format!("xen_{}-{}-{}.deb", &xenversion, &version, &arch)))
+            .arg(&output_path.join(&deb_name))
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -312,13 +302,5 @@ fn make_deb() -> Result<(), Box<dyn Error>> {
         e
     })?;
 
-    Ok(())
-}
-
-fn main() -> Result<(), Box<dyn Error>> {
-    init_logging()?;
-    configure_xen()?;
-    build_xen()?;
-    make_deb()?;
     Ok(())
 }

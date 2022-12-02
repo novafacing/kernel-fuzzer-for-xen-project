@@ -1,9 +1,14 @@
 //! Common functionality for KF/x install scripts
+pub mod deps;
+pub mod kfx;
+pub mod xen;
+
 use std::{
     collections::HashMap,
     error::Error,
-    fs::{copy as fs_copy, create_dir_all, File, OpenOptions},
+    fs::{copy as fs_copy, create_dir_all, set_permissions, File, OpenOptions, Permissions},
     io::{self, copy, BufRead, BufReader, Cursor, Read, Write},
+    os::unix::prelude::PermissionsExt,
     path::PathBuf,
     process::{Command, Output, Stdio},
 };
@@ -42,6 +47,22 @@ pub fn read_os_release() -> Result<HashMap<String, String>, Box<dyn Error>> {
             None
         })
         .collect::<HashMap<String, String>>())
+}
+
+pub fn get_distro() -> Result<String, Box<dyn Error>> {
+    let os_release = read_os_release()?;
+    Ok(os_release
+        .get("ID")
+        .expect("No distro in os release file.")
+        .to_lowercase())
+}
+
+pub fn get_version() -> Result<String, Box<dyn Error>> {
+    let os_release = read_os_release()?;
+    Ok(os_release
+        .get("VERSION_CODENAME")
+        .expect("No version codename in os release file.")
+        .to_lowercase())
 }
 
 /// Append a line to a file, creating it if it does not exist
@@ -171,7 +192,7 @@ pub fn get_dpkg_arch() -> Result<String, Box<dyn Error>> {
 }
 
 /// Get the size of a directory in KB
-pub fn dir_size(path: &PathBuf) -> Result<u64, Box<dyn Error>> {
+pub fn dir_size(path: &PathBuf) -> Result<usize, Box<dyn Error>> {
     let mut size = 0;
     for entry in WalkDir::new(path) {
         let entry = entry?;
@@ -180,7 +201,7 @@ pub fn dir_size(path: &PathBuf) -> Result<u64, Box<dyn Error>> {
             size += metadata.len();
         }
     }
-    Ok(size / 1024)
+    Ok(size as usize / 1024)
 }
 
 /// Copy all files and directories in a directory to another directory
@@ -197,6 +218,28 @@ pub fn copy_dir(src: &PathBuf, dest: &PathBuf) -> Result<(), Box<dyn Error>> {
             create_dir_all(dest_path)?;
         }
     }
+    Ok(())
+}
+
+pub fn write_file(path: &PathBuf, content: &[u8], mode: u32) -> Result<(), Box<dyn Error>> {
+    let mut f = File::create(path)?;
+    f.write_all(content)?;
+    set_permissions(path, Permissions::from_mode(mode))?;
+    Ok(())
+}
+
+pub fn unpack_deb(deb: &PathBuf, dest: &PathBuf) -> Result<(), Box<dyn Error>> {
+    check_command(
+        Command::new("dpkg-deb")
+            .arg("-xv")
+            .arg(deb.to_string_lossy().to_string())
+            .arg(dest.to_string_lossy().to_string())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("Failed to run dpkg-deb")
+            .wait_with_output(),
+    )?;
     Ok(())
 }
 
@@ -305,6 +348,7 @@ impl DebControl {
         s.push_str(&format!("Priority: {}\n", self.priority));
         s.push_str(&format!("Installed-Size: {}\n", self.installed_size));
         s.push_str(&format!("Description: {}\n", self.description));
+        s.push_str("\n");
         s
     }
 
