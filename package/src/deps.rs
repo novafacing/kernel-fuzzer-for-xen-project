@@ -9,7 +9,7 @@ use std::{
 use crate::{
     append_line, check_command, download, get_distro, get_version, replace_text, unpack_tgz,
 };
-use log::{debug, info};
+use log::info;
 
 /// List of base dependencies for KF/x install. Some distros may add or
 /// remove from this list depending on their available packages.
@@ -100,7 +100,7 @@ pub fn has_python_is_python2() -> Result<bool, Box<dyn Error>> {
 
 /// Run the apt install process including autoremove and clean to reduce image size
 pub fn run_apt(dependencies: &HashSet<String>) -> Result<(), Box<dyn Error>> {
-    debug!("Installing with dependencies: {:?}", dependencies);
+    info!("Updating apt");
 
     check_command(
         Command::new("apt-get")
@@ -113,6 +113,8 @@ pub fn run_apt(dependencies: &HashSet<String>) -> Result<(), Box<dyn Error>> {
             .wait_with_output(),
     )?;
 
+    info!("Installing dependencies");
+
     check_command(
         Command::new("apt-get")
             .arg("-y")
@@ -124,6 +126,9 @@ pub fn run_apt(dependencies: &HashSet<String>) -> Result<(), Box<dyn Error>> {
             .expect("Failed to spawn apt-get install")
             .wait_with_output(),
     )?;
+
+    info!("Building dependencies for Xen");
+
     check_command(
         Command::new("apt-get")
             .arg("-y")
@@ -136,6 +141,8 @@ pub fn run_apt(dependencies: &HashSet<String>) -> Result<(), Box<dyn Error>> {
             .wait_with_output(),
     )?;
 
+    info!("Removing unneeded packages");
+
     check_command(
         Command::new("apt-get")
             .arg("-y")
@@ -146,6 +153,8 @@ pub fn run_apt(dependencies: &HashSet<String>) -> Result<(), Box<dyn Error>> {
             .expect("Failed to spawn apt-get autoremove")
             .wait_with_output(),
     )?;
+
+    info!("Cleaning apt cache");
 
     check_command(
         Command::new("apt-get")
@@ -195,6 +204,8 @@ pub fn install_apt_deps() -> Result<(), Box<dyn Error>> {
         }
         _ => {}
     }
+
+    info!("Checking default python");
 
     if has_python_is_python2()? {
         dependencies.insert("python-is-python2".to_string());

@@ -8,6 +8,7 @@ ARG IMAGE
 FROM $IMAGE AS base
 
 ARG DEBIAN_FRONTEND=noninteractive
+ARG KFX_VERSION
 
 ENV USER root
 ENV PATH "/$USER/.cargo/bin:$PATH"
@@ -26,8 +27,35 @@ RUN apt-get -y update && apt-get -y install \
 # Install rust to run setup scripts
 RUN curl https://sh.rustup.rs -sSf | bash -s -- -y
 
-COPY . /kfx
+RUN mkdir -p /kfx
 WORKDIR /kfx
+
+COPY AFL /kfx/AFL/
+COPY .astylerc /kfx/.astylerc
+COPY AUTHORS /kfx/AUTHORS
+COPY capstone /kfx/capstone
+COPY configure.ac /kfx/configure.ac
+COPY COPYING /kfx/COPYING
+COPY .dockerignore /kfx/.dockerignore
+COPY dwarf2json /kfx/dwarf2json
+COPY .git /kfx/.git
+COPY .github /kfx/.github
+COPY .gitignore /kfx/.gitignore
+COPY .gitmodules /kfx/.gitmodules
+COPY libvmi /kfx/libvmi
+COPY libxdc /kfx/libxdc
+COPY Makefile.am /kfx/Makefile.am
+COPY patches /kfx/patches
+COPY README /kfx/README
+COPY README.md /kfx/README.md
+COPY scripts /kfx/scripts
+COPY security.md /kfx/security.md
+COPY src /kfx/src
+COPY testmodule /kfx/testmodule
+COPY testmodule_win /kfx/testmodule_win
+COPY tpp.txt /kfx/tpp.app
+COPY xen /kfx/xen
+
 
 RUN git submodule update --init --recursive
 
@@ -35,48 +63,14 @@ RUN git submodule update --init --recursive
 RUN grep -q "Tamas K Lengyel" AUTHORS \
     || { echo "docker build run directory not KF/x repo root!"; exit 1; }
 
+ENV MANIFEST /kfx/package/Cargo.toml
 
+COPY package /kfx/package
 
-FROM base AS scripts
+RUN cargo build --release --manifest-path=$MANIFEST
 
-COPY package /package
-# Export the manifest path for running scripts
-ENV MANIFEST /package/Cargo.toml
+RUN /kfx/package/target/release/package dependencies
 
-# RUN cargo build --release --manifest-path=$MANIFEST
+RUN /kfx/package/target/release/package build-xen /kfx/xen /output
 
-# FROM base AS deps
-# 
-# WORKDIR /kfx
-# 
-# COPY --from=scripts /package/target/release/dependencies /scripts/dependencies
-# 
-# # Install dependencies
-# RUN /scripts/dependencies
-# 
-# FROM deps AS xen-builder
-# 
-# WORKDIR /kfx
-# 
-# COPY --from=scripts /package/target/release/xen /scripts/xen
-# 
-# # Build Xen
-# RUN cp -a /kfx/xen /xen
-# WORKDIR /xen
-# RUN /scripts/xen
-# 
-# FROM deps AS kfx-builder
-# 
-# ARG KFX_VERSION
-
-# WORKDIR /kfx
-# 
-# COPY --from=scripts /package/target/release/kfx /scripts/kfx
-# 
-# # The deb directory is the build directory for the xen deb package, which the kfx
-# # package is a superset of
-# COPY --from=xen-builder /deb /deb
-# COPY --from=xen-builder /out /out
-# 
-# WORKDIR /kfx
-# RUN /scripts/kfx
+# RUN /kfx/package/target/release/package build-kfx /kfx /output $KFX_VERSION /xen-output/xen_*.deb

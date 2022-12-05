@@ -3,9 +3,8 @@
 use std::{
     collections::HashSet,
     error::Error,
-    fs::{create_dir_all, remove_dir_all, rename, set_permissions, File, Permissions},
+    fs::{create_dir_all, remove_dir_all, File},
     io::Write,
-    os::unix::prelude::PermissionsExt,
     path::PathBuf,
     process::{Command, Stdio},
 };

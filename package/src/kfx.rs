@@ -4,7 +4,7 @@ use std::{
     collections::HashMap,
     env::var,
     error::Error,
-    fs::{copy, create_dir, create_dir_all, remove_dir_all, File},
+    fs::{copy, create_dir_all, remove_dir_all, File},
     io::Write,
     path::PathBuf,
     process::{Command, Stdio},
@@ -15,8 +15,8 @@ use num_cpus::get as nproc;
 use tempdir::TempDir;
 
 use crate::{
-    check_command, copy_dir, dir_size, get_dpkg_arch, get_version, init_logging, read_os_release,
-    unpack_deb, write_file, DebControl,
+    check_command, copy_dir, dir_size, get_dpkg_arch, get_version, unpack_deb, write_file,
+    DebControl,
 };
 
 pub fn build_dwarf2json(kfx_path: &PathBuf) -> Result<(), Box<dyn Error>> {
@@ -35,8 +35,18 @@ pub fn build_dwarf2json(kfx_path: &PathBuf) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn build_libvmi(kfx_path: &PathBuf, build_path: &PathBuf) -> Result<(), Box<dyn Error>> {
+pub fn build_libvmi(
+    kfx_path: &PathBuf,
+    build_path: &PathBuf,
+    xen_deb_path: &PathBuf,
+) -> Result<(), Box<dyn Error>> {
     let libvmi_dir = kfx_path.join("libvmi");
+
+    let tmpdir = TempDir::new("deb")?;
+    let deb_dir = tmpdir.path().to_path_buf();
+    unpack_deb(&xen_deb_path, &deb_dir)?;
+    let deb_include_dir = deb_dir.join("usr/include/");
+    let deb_lib_dir = deb_dir.join("usr/lib/");
 
     info!("Building libvmi");
 
@@ -47,37 +57,40 @@ pub fn build_libvmi(kfx_path: &PathBuf, build_path: &PathBuf) -> Result<(), Box<
     // * xen/memory.h: xen/include/public/
     // * xenstore.h: tools/include/
     // * xs.h: tools/include/xenstore-compat/
-    let libvmi_include_paths = vec![
-        "tools/include/",
-        "xen/include/public",
-        "tools/include/xenstore-compat/",
-    ]
-    .iter()
-    .map(|p| {
-        let path = kfx_path.join(p);
-        path.to_string_lossy().to_string()
-    })
-    .collect::<Vec<_>>();
 
     let env: HashMap<String, String> = [
-        ("C_INCLUDE_PATH", &libvmi_include_paths.join(":")),
-        ("CPLUS_INCLUDE_PATH", &libvmi_include_paths.join(":")),
-        ("CPLUS_INCLUDE_PATH", &libvmi_include_paths.join(":")),
+        (
+            "LD_LIBRARY_PATH",
+            &format!(
+                "{}:{}",
+                deb_lib_dir.to_str().unwrap(),
+                var("LD_LIBRARY_PATH").unwrap_or_default()
+            )
+            .to_string(),
+        ),
+        (
+            "C_INCLUDE_PATH",
+            &deb_include_dir.to_string_lossy().to_string(),
+        ),
+        (
+            "CPLUS_INCLUDE_PATH",
+            &deb_include_dir.to_string_lossy().to_string(),
+        ),
+        (
+            "PKG_CONFIG_PATH",
+            &deb_lib_dir.join("pkgconfig").to_string_lossy().to_string(),
+        ),
         (
             "CFLAGS",
-            &libvmi_include_paths
-                .iter()
-                .map(|p| format!("-I{}", p))
-                .collect::<Vec<_>>()
-                .join(" "),
+            &format!("-I{}", deb_include_dir.to_string_lossy()).to_string(),
         ),
         (
             "CXXFLAGS",
-            &libvmi_include_paths
-                .iter()
-                .map(|p| format!("-I{}", p))
-                .collect::<Vec<_>>()
-                .join(" "),
+            &format!("-I{}", deb_include_dir.to_string_lossy()).to_string(),
+        ),
+        (
+            "LDFLAGS",
+            &format!("-L{}", deb_lib_dir.to_string_lossy()).to_string(),
         ),
     ]
     .iter()
@@ -224,71 +237,93 @@ pub fn build_libxdc(kfx_path: &PathBuf, build_path: &PathBuf) -> Result<(), Box<
     Ok(())
 }
 
-pub fn build_kfx(kfx_path: &PathBuf, build_path: &PathBuf) -> Result<(), Box<dyn Error>> {
+pub fn build_kfx(
+    kfx_path: &PathBuf,
+    build_path: &PathBuf,
+    xen_deb_path: &PathBuf,
+) -> Result<(), Box<dyn Error>> {
     info!("Building kfx");
 
-    // KF/x just needs the following includes:
-    // * xenctrl.h: xen/include/public/
-    // * xenforeignmemory.h: tools/include
-    // * xenstore.h: tools/include/
-    // * xen/xen.h: xen/include/public/
-    // * xs.h: tools/include/xenstore-compat/
-    let kfx_include_paths = vec![
-        "tools/include/",
-        "xen/include/public",
-        "tools/include/xenstore-compat/",
-    ]
-    .iter()
-    .map(|p| {
-        let path = kfx_path.join(p);
-        path.to_string_lossy().to_string()
-    })
-    .collect::<Vec<_>>();
+    let tmpdir = TempDir::new("deb")?;
+    let deb_dir = tmpdir.path().to_path_buf();
+    unpack_deb(&xen_deb_path, &deb_dir)?;
+    let deb_include_dir = deb_dir.join("usr/include/");
+    let deb_lib_dir = deb_dir.join("usr/lib/");
+
+    let build_lib_path = build_path.join("lib");
+    let build_include_path = build_path.join("include");
 
     let env: HashMap<String, String> = [
         (
             "LD_LIBRARY_PATH",
-            format!(
-                "{}:{}",
-                var("LD_LIBRARY_PATH").unwrap_or("".to_string()),
-                build_path.join("lib").to_string_lossy(),
-            ),
+            &format!(
+                "{}:{}:{}",
+                var("LD_LIBRARY_PATH").unwrap_or_default(),
+                deb_lib_dir.to_str().unwrap(),
+                build_lib_path.to_str().unwrap()
+            )
+            .to_string(),
         ),
         (
             "C_INCLUDE_PATH",
-            format!(
-                "{}/include:{}",
-                build_path.join("include").to_string_lossy(),
-                &kfx_include_paths.join(":")
+            &format!(
+                "{}:{}",
+                &deb_include_dir.to_string_lossy().to_string(),
+                &build_include_path.to_string_lossy().to_string()
             ),
         ),
         (
             "CPLUS_INCLUDE_PATH",
-            format!(
-                "{}/include:{}",
-                build_path.join("include").to_string_lossy(),
-                &kfx_include_paths.join(":")
+            &format!(
+                "{}:{}",
+                &deb_include_dir.to_string_lossy().to_string(),
+                &build_include_path.to_string_lossy().to_string()
             ),
         ),
         (
             "PKG_CONFIG_PATH",
-            build_path
-                .join("lib/pkgconfig")
-                .to_string_lossy()
-                .to_string(),
-        ),
-        (
-            "LDFLAGS",
-            format!("-L{}/lib", build_path.join("lib").to_string_lossy()),
+            &format!(
+                "{}:{}",
+                &deb_lib_dir.join("pkgconfig").to_string_lossy().to_string(),
+                &build_lib_path
+                    .join("pkgconfig")
+                    .to_string_lossy()
+                    .to_string()
+            ),
         ),
         (
             "CFLAGS",
-            format!("-I{}/include", build_path.join("include").to_string_lossy()),
+            &format!(
+                "-I{} -I{}",
+                deb_include_dir.to_string_lossy(),
+                build_include_path.to_string_lossy()
+            )
+            .to_string(),
+        ),
+        (
+            "CXXFLAGS",
+            &format!(
+                "-I{} -I{}",
+                deb_include_dir.to_string_lossy(),
+                build_include_path.to_string_lossy()
+            )
+            .to_string(),
+        ),
+        (
+            "LDFLAGS",
+            &format!(
+                "-L{} -L{}",
+                deb_lib_dir.to_string_lossy(),
+                build_lib_path.to_string_lossy()
+            )
+            .to_string(),
         ),
     ]
     .iter()
     .map(|(k, v)| (k.to_string(), v.to_string()))
     .collect();
+
+    info!("Building with env: {:?}", env);
 
     check_command(
         Command::new("autoreconf")
@@ -345,9 +380,9 @@ pub fn make_bundle_deb(
     output_path: &PathBuf,
     build_path: &PathBuf,
     xen_deb_path: &PathBuf,
+    kfx_version: String,
 ) -> Result<(), Box<dyn Error>> {
     info!("Making deb for kfx bundle");
-    let kfx_version = var("KFX_VERSION")?;
     let arch = get_dpkg_arch()?;
     let distro_version = get_version()?;
 
@@ -446,9 +481,12 @@ pub fn make_bundle_deb(
 /// Create a deb package for all KF/x components *except* Xen itself
 /// This has to be run after `make_bundle_deb` because it reuses the
 /// same directory and expects it to be gone
-pub fn make_kfx_deb(output_path: &PathBuf, build_path: &PathBuf) -> Result<(), Box<dyn Error>> {
+pub fn make_kfx_deb(
+    output_path: &PathBuf,
+    build_path: &PathBuf,
+    kfx_version: String,
+) -> Result<(), Box<dyn Error>> {
     info!("Making deb for kfx bundle");
-    let kfx_version = var("KFX_VERSION")?;
     let arch = get_dpkg_arch()?;
     let distro_version = get_version()?;
 

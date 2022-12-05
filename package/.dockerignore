@@ -1,1 +1,4 @@
 target
+docker
+artifacts
+Cargo.lock
