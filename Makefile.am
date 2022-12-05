@@ -30,8 +30,8 @@ endif
 
     bin_PROGRAMS += forkvm
     forkvm_SOURCES = src/forkvm_main.c src/forkvm.c src/forkvm.h
-    forkvm_LDADD = $(LIBXC_LIBS) $(LIBXL_LIBS) $(GLIB_LIBS)
-    forkvm_CFLAGS = $(LIBXC_CFLAGS) $(LIBXL_CFLAGS) $(GLIB_CFLAGS)
+    forkvm_LDADD = $(LIBXC_LIBS) $(LIBXL_LIBS) $(LIBXENSTORE_LIBS) $(GLIB_LIBS) $(LIBXS)
+    forkvm_CFLAGS = $(LIBXC_CFLAGS) $(LIBXL_CFLAGS) $(LIBXENSTORE_CFLAGS) $(GLIB_CFLAGS)
 
     bin_PROGRAMS += xen-transplant
     xen_transplant_SOURCES = src/xen-transplant.c

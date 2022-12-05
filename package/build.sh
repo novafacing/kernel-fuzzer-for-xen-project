@@ -26,14 +26,13 @@ TAG="kfx-${KFX_VERSION}-${IMAGE}"
 docker build -t "${TAG}" -f "${SCRIPT_DIR}/docker/Dockerfile" \
     --build-arg IMAGE="${IMAGE}" \
     --build-arg KFX_VERSION="${KFX_VERSION}" \
-    --build-arg KFXFILES="${KFXFILES}" \
     "."
 
 # Create a temporary container
 CONTAINER=$(docker create "${TAG}")
 
 # Copy the deb packages to the host
-docker cp "${CONTAINER}:/out/" "${OUT_DIR}"
+docker cp "${CONTAINER}:/debs/" "${OUT_DIR}/debs-${IMAGE}-${KFX_VERSION}"
 
 # Remove the temporary container
 docker rm "${CONTAINER}"
