@@ -5,14 +5,18 @@
 # IMAGE is an argument of the distro to build for, e.g. 'ubuntu:jammy'
 ARG IMAGE
 
+########################################################################################################
 FROM $IMAGE AS base
+########################################################################################################e
 
 ENV USER root
 
 RUN cp /etc/apt/sources.list /etc/apt/sources.list.d/sources-src.list && \
     sed -i 's|deb http|deb-src http|g' /etc/apt/sources.list.d/sources-src.list
 
+########################################################################################################
 FROM base as deps
+########################################################################################################s
 
 ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/New_York
@@ -94,7 +98,9 @@ RUN echo 'APT::Cache-Limit "100000000";' >> /etc/apt/apt.conf.d/70debconf && \
 
 RUN update-ca-certificates
 
+########################################################################################################
 FROM deps AS xen-builder
+########################################################################################################
 
 COPY xen /build/xen
 
@@ -127,7 +133,65 @@ RUN if [ $(ls -A "/debs/" | wc -l) -eq 0 ]; then \
     exit 1; \
 fi
 
+########################################################################################################
+FROM deps AS aflplusplus-builder
+########################################################################################################
+
+ARG LLVM_VERSION=14
+
+RUN apt-get -y update && apt-get -y install \
+    apt-transport-https \
+    automake \
+    bison \
+    bzip2 \
+    cmake \
+    dialog \
+    flex \
+    git \
+    gnupg \
+    gnuplot-nox \
+    libcapstone-dev \
+    libglib2.0-dev \
+    libpixman-1-dev \
+    libtool \
+    libtool-bin \
+    make \
+    meson \
+    ninja-build \
+    python3 \
+    python3-dev \
+    python3-setuptools \
+    software-properties-common \
+    wget \
+    xz-utils
+
+# Gcc versions:
+# Bullseye: 10
+# Buster: 8
+# Focal: 10
+# Bionic: 8
+# Jammy: 12
+RUN apt-get -y update && \
+    apt-get -y install gcc-12-plugin-dev gcc-12 g++-12 || \
+    apt-get -y install gcc-10-plugin-dev gcc-10 g++-10 || \
+    apt-get -y install gcc-8-plugin-dev gcc-8 g++-8 || \
+    { echo "No gcc plugin dev package found!"; exit 1; }
+
+RUN wget -O /tmp/llvm.sh https://apt.llvm.org/llvm.sh && \
+    chmod +x /tmp/llvm.sh && \
+    /tmp/llvm.sh "${LLVM_VERSION}" all
+
+RUN git clone --recurse-submodules \
+    https://github.com/AFLplusplus/AFLplusplus.git /build/aflplusplus
+    
+WORKDIR /build/aflplusplus
+RUN mkdir -p /aflplusplus && \
+    make distrib && \
+    make DESTDIR=/aflplusplus install
+
+########################################################################################################
 FROM deps as kfx-deps
+########################################################################################################
 
 # Install go
 RUN wget https://go.dev/dl/go1.19.3.linux-amd64.tar.gz && \
@@ -135,7 +199,10 @@ RUN wget https://go.dev/dl/go1.19.3.linux-amd64.tar.gz && \
 
 ENV PATH "${PATH}:/usr/local/go/bin"
 
+
+########################################################################################################
 FROM kfx-deps as kfx-builder
+########################################################################################################
 
 # Copy the deb file from the xen build and extract it
 COPY --from=xen-builder /debs/ /debs/
@@ -215,7 +282,14 @@ RUN if [ ! -f /output/bin/kfx ]; then \
         exit 1; \
     fi
 
+COPY --from=aflplusplus-builder /aflplusplus /build/aflplusplus/
+
+RUN tar -C /build/aflplusplus/usr/local/ -cf /aflplusplus.tar bin lib share && \
+    tar -C /output -xf /aflplusplus.tar
+
+########################################################################################################
 FROM deps AS deb-builder
+########################################################################################################
 
 ARG KFX_VERSION
 ENV KFX_VERSION ${KFX_VERSION}
@@ -235,27 +309,37 @@ RUN chmod +x /xen/usr/bin/kfx-find-xen-defaults
 # Create xen deb
 COPY package/resource/xen/postinst /xen/DEBIAN/postinst
 COPY package/resource/xen/postrm /xen/DEBIAN/postrm
-RUN export XENVERSION=$(ls /xen-debs | head -n 1 |awk '{ n=split($0,a,"-"); split(a[n],b,"."); print b[1]"."b[2]"."b[3]; }') && \
+RUN export XENVERSION=$(ls /xen-debs | head -n 1 |awk \
+        '{ n=split($0,a,"-"); split(a[n],b,"."); print b[1]"."b[2]"."b[3]; }') && \
     export ARCH=$(dpkg --print-architecture) && \
     mkdir -p /xen/DEBIAN && \
     echo "Package: kfx-xen" > /xen/DEBIAN/control && \
     echo "Source: kfx-xen" >> /xen/DEBIAN/control && \
     echo "Version: ${XENVERSION}" >> /xen/DEBIAN/control && \
     echo "Architecture: ${ARCH}" >> /xen/DEBIAN/control && \
-    echo "Maintainer: UNMAINTAINED: KF/x Team <rowan.hart@intel.com>" >> /xen/DEBIAN/control && \
+    echo "Maintainer: UNMAINTAINED: KF/x Team <rowan.hart@intel.com>" \
+        >> /xen/DEBIAN/control && \
     echo "Section: misc" >> /xen/DEBIAN/control && \
     echo "Priority: optional" >> /xen/DEBIAN/control && \
     echo "Description: Xen for KFx" >> /xen/DEBIAN/control && \
-    echo "Depends: libpixman-1-0, libpng16-16, libnettle6 | libnettle7 | libnettle8, libgnutls30, libfdt1, libyajl2, libaio1" >> /xen/DEBIAN/control && \
-    echo "Conflicts: xen-hypervisor-4.16-${ARCH}, xen-hypervisor-4.15-${ARCH}, xen-hypervisor-4.14-${ARCH}, xen-hypervisor-4.13-${ARCH}, xen-hypervisor-4.12-${ARCH}, xen-hypervisor-4.11-${ARCH}, xen-hypervisor-4.10-${ARCH}, xen-hypervisor-4.9-${ARCH}" >> /xen/DEBIAN/control && \
-    echo "Installed-Size: $(du -ks /xen/ | awk '{print $1}')" >> /xen/DEBIAN/control && \
-    find /xen/etc -type f -printf '%P\n' | xargs -i echo '/etc/{}' > /xen/DEBIAN/conffiles && \
+    echo "Depends: libpixman-1-0, libpng16-16, libnettle6 | libnettle7 | libnettle8, "\
+        "libgnutls30, libfdt1, libyajl2, libaio1" >> /xen/DEBIAN/control && \
+    echo "Conflicts: xen-hypervisor-4.16-${ARCH}, xen-hypervisor-4.15-${ARCH}, "\
+        "xen-hypervisor-4.14-${ARCH}, xen-hypervisor-4.13-${ARCH}, "\
+        "xen-hypervisor-4.12-${ARCH}, xen-hypervisor-4.11-${ARCH}, "\
+        "xen-hypervisor-4.10-${ARCH}, xen-hypervisor-4.9-${ARCH}" \
+        >> /xen/DEBIAN/control && \
+    echo "Installed-Size: $(du -ks /xen/ | awk '{print $1}')" \
+        >> /xen/DEBIAN/control && \
+    find /xen/etc -type f -printf '%P\n' | xargs -i echo '/etc/{}' \
+        > /xen/DEBIAN/conffiles && \
     chown -R root:root /xen/ && \
     dpkg-deb --build -z0 /xen "/debs/kfx-xen_${XENVERSION}-${KFX_VERSION}_${ARCH}.deb"
 
 # Create combined deb
 COPY package/resource/bundle/postinst /xen/DEBIAN/postinst
-RUN export XENVERSION=$(ls /xen-debs | head -n 1 |awk '{ n=split($0,a,"-"); split(a[n],b,"."); print b[1]"."b[2]"."b[3]; }') && \
+RUN export XENVERSION=$(ls /xen-debs | head -n 1 |awk \
+        '{ n=split($0,a,"-"); split(a[n],b,"."); print b[1]"."b[2]"."b[3]; }') && \
     export ARCH=$(dpkg --print-architecture) && \
     tar -C /kfx/usr/local/ -cf /kfx.tar bin include lib && \
     tar -C /xen/usr/local/ -xf /kfx.tar && \
@@ -264,16 +348,26 @@ RUN export XENVERSION=$(ls /xen-debs | head -n 1 |awk '{ n=split($0,a,"-"); spli
     echo "Source: kfx-bundle" >> /xen/DEBIAN/control && \
     echo "Version: ${XENVERSION}" >> /xen/DEBIAN/control && \
     echo "Architecture: ${ARCH}" >> /xen/DEBIAN/control && \
-    echo "Maintainer: UNMAINTAINED: KF/x Team <rowan.hart@intel.com>" >> /xen/DEBIAN/control && \
+    echo "Maintainer: UNMAINTAINED: KF/x Team <rowan.hart@intel.com>" \
+        >> /xen/DEBIAN/control && \
     echo "Section: misc" >> /xen/DEBIAN/control && \
     echo "Priority: optional" >> /xen/DEBIAN/control && \
     echo "Description: Xen for KFx" >> /xen/DEBIAN/control && \
-    echo "Depends: libpixman-1-0, libpng16-16, libnettle6 | libnettle7 | libnettle8, libgnutls30, libfdt1, libyajl2, libaio1, libfuse2, liblzma5, libpcre3, libunwind8, zlib1g" >> /xen/DEBIAN/control && \
-    echo "Conflicts: xen-hypervisor-4.16-${ARCH}, xen-hypervisor-4.15-${ARCH}, xen-hypervisor-4.14-${ARCH}, xen-hypervisor-4.13-${ARCH}, xen-hypervisor-4.12-${ARCH}, xen-hypervisor-4.11-${ARCH}, xen-hypervisor-4.10-${ARCH}, xen-hypervisor-4.9-${ARCH}" >> /xen/DEBIAN/control && \
-    echo "Installed-Size: $(du -ks /xen/ | awk '{print $1}')" >> /xen/DEBIAN/control && \
-    find /xen/etc -type f -printf '%P\n' | xargs -i echo '/etc/{}' > /xen/DEBIAN/conffiles && \
+    echo "Depends: libpixman-1-0, libpng16-16, libnettle6 | libnettle7 | libnettle8, "\
+        "libgnutls30, libfdt1, libyajl2, libaio1, libfuse2, liblzma5, libpcre3, "\
+        "libunwind8, zlib1g" >> /xen/DEBIAN/control && \
+    echo "Conflicts: xen-hypervisor-4.16-${ARCH}, xen-hypervisor-4.15-${ARCH}, "\
+        "xen-hypervisor-4.14-${ARCH}, xen-hypervisor-4.13-${ARCH}, "\
+        "xen-hypervisor-4.12-${ARCH}, xen-hypervisor-4.11-${ARCH}, "\
+        "xen-hypervisor-4.10-${ARCH}, xen-hypervisor-4.9-${ARCH}" \
+        >> /xen/DEBIAN/control && \
+    echo "Installed-Size: $(du -ks /xen/ | awk '{print $1}')" \
+        >> /xen/DEBIAN/control && \
+    find /xen/etc -type f -printf '%P\n' | xargs -i echo '/etc/{}' \
+        > /xen/DEBIAN/conffiles && \
     chown -R root:root /xen/ && \
-    dpkg-deb --build -z0 /xen "/debs/kfx-bundle_${XENVERSION}-${KFX_VERSION}_${ARCH}.deb"
+    dpkg-deb --build -z0 /xen \
+        "/debs/kfx-bundle_${XENVERSION}-${KFX_VERSION}_${ARCH}.deb"
 
 # Create KF/x deb
 COPY package/resource/kfx/postinst /kfx/DEBIAN/postinst
@@ -285,12 +379,15 @@ RUN mkdir -p /kfx/DEBIAN && \
     echo "Source: kfx" >> /kfx/DEBIAN/control && \
     echo "Version: ${KFX_VERSION}" >> /kfx/DEBIAN/control && \
     echo "Architecture: ${ARCH}" >> /kfx/DEBIAN/control && \
-    echo "Maintainer: UNMAINTAINED: KF/x Team <rowan.hart@intel.com>" >> /kfx/DEBIAN/control && \
+    echo "Maintainer: UNMAINTAINED: KF/x Team <rowan.hart@intel.com>" \
+        >> /kfx/DEBIAN/control && \
     echo "Section: misc" >> /kfx/DEBIAN/control && \
     echo "Priority: optional" >> /kfx/DEBIAN/control && \
     echo "Description: Kernel Fuzzer for Xen" >> /kfx/DEBIAN/control && \
-    echo "Depends: libfuse2, liblzma5, libpcre3, libunwind8, zlib1g" >> /kfx/DEBIAN/control && \
-    echo "Installed-Size: $(du -ks /kfx/ | awk '{print $1}')" >> /kfx/DEBIAN/control && \
+    echo "Depends: libfuse2, liblzma5, libpcre3, libunwind8, zlib1g" \
+        >> /kfx/DEBIAN/control && \
+    echo "Installed-Size: $(du -ks /kfx/ | awk '{print $1}')" \
+        >> /kfx/DEBIAN/control && \
     echo "/etc/ld.so.conf.d/kfx.conf" > /kfx/DEBIAN/conffiles && \
     chown -R root:root /kfx/ && \
     dpkg-deb --build -z0 /kfx "/debs/kfx_${KFX_VERSION}_${ARCH}.deb"
