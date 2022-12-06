@@ -3,7 +3,7 @@
 # Package build script
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
-pushd "${SCRIPT_DIR}/.." > /dev/null
+pushd "${SCRIPT_DIR}/../.." > /dev/null
 
 IMAGE="${1}"
 KFX_VERSION="${2}"
@@ -23,7 +23,7 @@ mkdir -p "${OUT_DIR}"
 TAG="kfx-builder-${IMAGE}"
 
 # Build the image
-docker build -t "${TAG}" -f "${SCRIPT_DIR}/docker/Dockerfile" \
+docker build -t "${TAG}" -f "${SCRIPT_DIR}/../docker/Dockerfile" \
     --build-arg IMAGE="${IMAGE}" \
     --build-arg KFX_VERSION="${KFX_VERSION}" \
     "."

@@ -18,6 +18,6 @@ jobs:
       
       - name: Build Package
         run: |
-          package/build.sh ${{ matrix.image }} ${{ github.head_ref }}${{ github.sha }} /debs
+          package/scripts/build.sh ${{ matrix.image }} ${{ github.head_ref }}${{ github.sha }} /debs
 
 
