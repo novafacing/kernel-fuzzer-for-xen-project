@@ -1,0 +1,23 @@
+name: Package
+on: [push]
+jobs:
+  package:
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        image:
+          - 'ubuntu:jammy'
+          - 'ubuntu:focal'
+          - 'ubuntu:bionic'
+          - 'debian:bullseye'
+          - 'debian:buster'
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+      
+      - name: Build Package
+        run: |
+          package/build.sh ${{ matrix.image }} ${{ github.head_ref }}${{ github.sha }} /debs
+
+

@@ -20,7 +20,7 @@ fi
 
 mkdir -p "${OUT_DIR}"
 
-TAG="kfx-${KFX_VERSION}-${IMAGE}"
+TAG="kfx-builder-${IMAGE}"
 
 # Build the image
 docker build -t "${TAG}" -f "${SCRIPT_DIR}/docker/Dockerfile" \

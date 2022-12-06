@@ -3,9 +3,9 @@
 # for a given distro.
 
 # IMAGE is an argument of the distro to build for, e.g. 'ubuntu:jammy'
-FROM ubuntu:jammy AS base
+ARG IMAGE
 
-ARG DEBIAN_FRONTEND=noninteractive
+FROM $IMAGE AS base
 
 ENV USER root
 
@@ -13,6 +13,9 @@ RUN cp /etc/apt/sources.list /etc/apt/sources.list.d/sources-src.list && \
     sed -i 's|deb http|deb-src http|g' /etc/apt/sources.list.d/sources-src.list
 
 FROM base as deps
+
+ARG DEBIAN_FRONTEND=noninteractive
+ENV TZ=America/New_York
 
 # Install basic dependencies for running the rest of the setup
 # process
@@ -84,7 +87,10 @@ RUN apt-get -y update && apt-get -y install \
     xz-utils \
     zlib1g-dev
 
-RUN apt-get -y update && apt-get -y build-dep xen
+# This is required for buster, but doesn't hurt other distros
+RUN echo 'APT::Cache-Limit "100000000";' >> /etc/apt/apt.conf.d/70debconf && \
+    echo 'APT::Cache-Start "100000000";' >> /etc/apt/apt.conf.d/70debconf && \
+    apt-get -y update && apt-get -y build-dep xen
 
 RUN update-ca-certificates
 
@@ -288,9 +294,3 @@ RUN mkdir -p /kfx/DEBIAN && \
     echo "/etc/ld.so.conf.d/kfx.conf" > /kfx/DEBIAN/conffiles && \
     chown -R root:root /kfx/ && \
     dpkg-deb --build -z0 /kfx "/debs/kfx_${KFX_VERSION}_${ARCH}.deb"
-
-FROM deb-builder AS deb-test
-
-RUN apt-get -y update && apt-get -y install \
-    libnettle8 \
-    libpng16-16
