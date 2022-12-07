@@ -21,3 +21,5 @@ find "${OUTDIR}" -type f -name '*.deb' -exec \
 find "${OUTDIR}" -type d -empty -delete
 
 echo "Artifacts written to ${OUTDIR}"
+
+popd

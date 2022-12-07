@@ -10,7 +10,15 @@ The packaging processes requires that you have `docker` installed as well as
 
 ## Running With Script
 
-There is a convenience script, `package/package.sh`
+There is a convenience script, `package/package.sh` that you can run
+from anywhere in the repository. It takes one optional argument, an
+output directory to write `.deb` files to, and will create a temporary
+directory for them if not specified.
+
+```sh
+$ ./package/package.sh
+...
+
 
 ## Running Manually
 
