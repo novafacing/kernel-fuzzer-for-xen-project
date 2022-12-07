@@ -17,6 +17,8 @@ fi
 if [ -z "${OUT_DIR}" ]; then
     OUT_DIR="${SCRIPT_DIR}/artifacts/"
 fi
+          
+CODENAME="$(echo ${IMAGE} | awk -F':' '{print $2}' | head -n 1)"
 
 mkdir -p "${OUT_DIR}"
 
@@ -32,7 +34,7 @@ docker build -t "${TAG}" -f "${SCRIPT_DIR}/../docker/Dockerfile" \
 CONTAINER=$(docker create "${TAG}")
 
 # Copy the deb packages to the host
-docker cp "${CONTAINER}:/debs/" "${OUT_DIR}/debs-${IMAGE}-${KFX_VERSION}"
+docker cp "${CONTAINER}:/debs/" "${OUT_DIR}/"
 
 # Remove the temporary container
 docker rm "${CONTAINER}"

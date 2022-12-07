@@ -137,8 +137,6 @@ fi
 FROM deps AS aflplusplus-builder
 ########################################################################################################
 
-ARG LLVM_VERSION=14
-
 RUN apt-get -y update && apt-get -y install \
     apt-transport-https \
     automake \
@@ -177,7 +175,12 @@ RUN apt-get -y update && \
     apt-get -y install gcc-8-plugin-dev gcc-8 g++-8 || \
     { echo "No gcc plugin dev package found!"; exit 1; }
 
-RUN wget -O /tmp/llvm.sh https://apt.llvm.org/llvm.sh && \
+RUN if grep -q "bionic" /etc/os-release; then \
+        export LLVM_VERSION=13; \
+    else \
+        export LLVM_VERSION=14; \
+    fi && \
+    wget -O /tmp/llvm.sh https://apt.llvm.org/llvm.sh && \
     chmod +x /tmp/llvm.sh && \
     /tmp/llvm.sh "${LLVM_VERSION}" all
 
@@ -185,7 +188,9 @@ RUN git clone --recurse-submodules \
     https://github.com/AFLplusplus/AFLplusplus.git /build/aflplusplus
     
 WORKDIR /build/aflplusplus
-RUN mkdir -p /aflplusplus && \
+RUN git fetch --all && \
+    git checkout 8cdc48f73a17ddd557897f2098937a8ba3bfe184 && \
+    mkdir -p /aflplusplus && \
     make distrib && \
     make DESTDIR=/aflplusplus install
 
