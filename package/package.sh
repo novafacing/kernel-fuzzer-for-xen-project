@@ -10,6 +10,8 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 pushd "${SCRIPT_DIR}/.." > /dev/null
 
+git submodule update --init --recursive
+
 act -W "${SCRIPT_DIR}/package.yml" --artifact-server-path="${OUTDIR}"
 
 find "${OUTDIR}" -type f -name '*.gz__' -exec \
