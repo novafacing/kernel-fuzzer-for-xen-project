@@ -1,32 +1,38 @@
 //! This module implements the xen.cfg file format and allows reading, writing, and building
 //! xen cfg files with code.
 //!
-
 use std::{
     collections::HashMap,
-    default,
-    fmt::{Display, Formatter, Result},
+    fmt::{self, Display, Formatter},
     net::Ipv4Addr,
     path::PathBuf,
 };
 
 use derive_builder::Builder;
 use macaddr::MacAddr6;
+use serde::{Serialize, Serializer};
 use serde_json::to_string;
 
 /// The type of guest VM
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub enum GuestType {
     /// Paravirtualized guest aware of the Xen host
     PV,
     /// Similar to HVM but without most emulated devices, requires PVH aware kernel
     PVH,
     /// Hardware virtual machine with full emulated BIOS and devices
+    #[default]
     HVM,
 }
 
+impl Serialize for GuestType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
 impl Display for GuestType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}",
@@ -51,8 +57,14 @@ pub enum EventAction {
     SoftReset,
 }
 
+impl Serialize for EventAction {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
 impl Display for EventAction {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}",
@@ -75,8 +87,14 @@ pub enum PvFirmware {
     PvGrub64,
 }
 
+impl Serialize for PvFirmware {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
 impl Display for PvFirmware {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}",
@@ -89,7 +107,7 @@ impl Display for PvFirmware {
 }
 
 #[derive(Clone, Default)]
-enum XlDiskFormat {
+pub enum XlDiskFormat {
     #[default]
     Raw,
     Qcow,
@@ -98,8 +116,14 @@ enum XlDiskFormat {
     Qed,
 }
 
+impl Serialize for XlDiskFormat {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
 impl Display for XlDiskFormat {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}",
@@ -115,10 +139,16 @@ impl Display for XlDiskFormat {
 }
 
 #[derive(Clone)]
-enum XlDiskVdev {
+pub enum XlDiskVdev {
     Xvd(String),
     Hd(String),
     Sd(String),
+}
+
+impl Serialize for XlDiskVdev {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
 }
 
 impl Default for XlDiskVdev {
@@ -128,7 +158,7 @@ impl Default for XlDiskVdev {
 }
 
 impl Display for XlDiskVdev {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}",
@@ -142,14 +172,20 @@ impl Display for XlDiskVdev {
 }
 
 #[derive(Clone, Default)]
-enum XlDiskAccess {
+pub enum XlDiskAccess {
     #[default]
     RW,
     RO,
 }
 
+impl Serialize for XlDiskAccess {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
 impl Display for XlDiskAccess {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}",
@@ -163,8 +199,9 @@ impl Display for XlDiskAccess {
 
 /// Xl Disk configuration format used for specifying disks to boot with
 /// See https://xenbits.xen.org/docs/unstable/man/xl-disk-configuration.5.html
-#[derive(Builder, Clone)]
-struct XlDiskCfg {
+#[derive(Builder, Clone, Default)]
+#[builder(setter(into, strip_option), default)]
+pub struct XlDiskCfg {
     /// The path on disk to the Xl disk
     target: PathBuf,
     /// The disk format
@@ -179,33 +216,45 @@ struct XlDiskCfg {
     script: Option<PathBuf>,
 }
 
+impl Serialize for XlDiskCfg {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
 impl Display for XlDiskCfg {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let opt = format!(
             "format={},vdev={},access={},{}{}{}",
             self.format.to_string(),
             self.vdev.to_string(),
             self.access.to_string(),
-            if self.cdrom { "cdrom," } else { "" },
+            if self.cdrom { "devtype=cdrom," } else { "" },
             match &self.script {
-                Some(script) => script.to_string_lossy().to_string(),
+                Some(script) => format!("script={}", script.to_string_lossy().to_string()),
                 None => "".to_string(),
             },
-            self.target.to_string_lossy(),
+            format!("target={}", self.target.to_string_lossy()),
         );
         write!(f, "{}", opt)
     }
 }
 
 #[derive(Clone, Default)]
-enum XlVifType {
+pub enum XlVifType {
     #[default]
     Ioemu,
     Vif,
 }
 
+impl Serialize for XlVifType {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
 impl Display for XlVifType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}",
@@ -218,15 +267,21 @@ impl Display for XlVifType {
 }
 
 #[derive(Clone, Default)]
-enum XlVifModel {
+pub enum XlVifModel {
     #[default]
     Rtl8139,
     E1000,
     Other(String),
 }
 
+impl Serialize for XlVifModel {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
 impl Display for XlVifModel {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}",
@@ -239,10 +294,26 @@ impl Display for XlVifModel {
     }
 }
 
-#[derive(Builder, Clone)]
-struct XlNetCfg {
+#[derive(Clone, Default)]
+pub struct XlMacAddr6(MacAddr6);
+
+impl Serialize for XlMacAddr6 {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.0.to_string())
+    }
+}
+
+impl Display for XlMacAddr6 {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0.to_string())
+    }
+}
+
+#[derive(Builder, Clone, Default)]
+#[builder(setter(into, strip_option), default)]
+pub struct XlNetCfg {
     /// The MAC address to use in the guest
-    mac: Option<MacAddr6>,
+    mac: Option<XlMacAddr6>,
     /// The bridge interface to use in the guest
     bridge: Option<String>,
     /// Name of network interface the VIF should communicate with
@@ -260,10 +331,16 @@ struct XlNetCfg {
     ip: Option<Ipv4Addr>,
 }
 
+impl Serialize for XlNetCfg {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
 impl Display for XlNetCfg {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut options = HashMap::new();
-        if let Some(mac) = self.mac {
+        if let Some(mac) = &self.mac {
             options.insert("mac", mac.to_string());
         }
         if let Some(bridge) = &self.bridge {
@@ -301,7 +378,7 @@ impl Display for XlNetCfg {
 }
 
 #[derive(Clone, Default)]
-enum XlVgaDev {
+pub enum XlVgaDev {
     None,
     #[default]
     StdVga,
@@ -309,8 +386,14 @@ enum XlVgaDev {
     Qxl,
 }
 
+impl Serialize for XlVgaDev {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
 impl Display for XlVgaDev {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}",
@@ -318,16 +401,231 @@ impl Display for XlVgaDev {
                 XlVgaDev::None => "none",
                 XlVgaDev::StdVga => "stdvga",
                 XlVgaDev::Cirrus => "cirrus",
+
                 XlVgaDev::Qxl => "qxl",
             }
         )
     }
 }
 
+#[derive(Clone)]
+pub enum XlRemoteHost {
+    Hostname(String),
+    Ip(Ipv4Addr),
+}
+
+impl Serialize for XlRemoteHost {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl Display for XlRemoteHost {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                XlRemoteHost::Hostname(hostname) => hostname.to_string(),
+                XlRemoteHost::Ip(ip) => ip.to_string(),
+            }
+        )
+    }
+}
+
+#[derive(Clone)]
+pub struct XlUdpConn {
+    remote_host: Option<XlRemoteHost>,
+    remote_port: u16,
+    src_ip: Option<Ipv4Addr>,
+    src_port: Option<u16>,
+}
+
+impl Display for XlUdpConn {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "udp:{}:{}{}",
+            match &self.remote_host {
+                Some(remote_host) => remote_host.to_string(),
+                None => "".to_string(),
+            },
+            self.remote_port,
+            if let Some(src_port) = self.src_port {
+                if let Some(src_ip) = self.src_ip {
+                    format!("@{}:{}", src_ip, src_port)
+                } else {
+                    format!("@:{}", src_port)
+                }
+            } else {
+                "".to_string()
+            },
+        )
+    }
+}
+
+#[derive(Clone)]
+pub struct XlTcpConn {
+    remote_host: Option<XlRemoteHost>,
+    remote_port: u16,
+    server: bool,
+    wait: bool,
+    nodelay: bool,
+    reconnect: Option<u32>,
+}
+
+impl Display for XlTcpConn {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "tcp:{}:{}{}{}{}{}",
+            match &self.remote_host {
+                Some(remote_host) => remote_host.to_string(),
+                None => "".to_string(),
+            },
+            self.remote_port,
+            if self.server { ",server=on" } else { "" },
+            if self.wait { ",wait=on" } else { "" },
+            if self.nodelay { ",nodelay=on" } else { "" },
+            if let Some(reconnect) = self.reconnect {
+                format!(",reconnect={}", reconnect)
+            } else {
+                "".to_string()
+            },
+        )
+    }
+}
+
+#[derive(Clone)]
+pub struct XlTelnetConn {
+    remote_host: XlRemoteHost,
+    remote_port: u16,
+    server: bool,
+    wait: bool,
+    nodelay: bool,
+}
+
+impl Display for XlTelnetConn {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "telnet:{}:{}{}{}{}",
+            self.remote_host,
+            self.remote_port,
+            if self.server { ",server=on" } else { "" },
+            if self.wait { ",wait=on" } else { "" },
+            if self.nodelay { ",nodelay=on" } else { "" },
+        )
+    }
+}
+
+#[derive(Clone)]
+pub struct XlWebsocketConn {
+    remote_host: XlRemoteHost,
+    remote_port: u16,
+    wait: bool,
+    nodelay: bool,
+}
+
+impl Display for XlWebsocketConn {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "websocket:{}:{},server=on{}{}",
+            self.remote_host,
+            self.remote_port,
+            if self.wait { ",wait=on" } else { "" },
+            if self.nodelay { ",nodelay=on" } else { "" },
+        )
+    }
+}
+
+#[derive(Clone)]
+pub struct XlUnixConn {
+    path: String,
+    server: bool,
+    wait: bool,
+    reconnect: Option<u32>,
+}
+
+impl Display for XlUnixConn {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "unix:{}{}{}{}",
+            self.path,
+            if self.server { ",server=on" } else { "" },
+            if self.wait { ",wait=on" } else { "" },
+            if let Some(reconnect) = self.reconnect {
+                format!(",reconnect={}", reconnect)
+            } else {
+                "".to_string()
+            },
+        )
+    }
+}
+
+#[derive(Clone)]
+pub enum XlSerialDev {
+    Vc(Option<(usize, usize)>),
+    Pty,
+    None,
+    Null,
+    Chardev(String),
+    Dev(String),
+    Parport(usize),
+    File(String),
+    Stdio,
+    Pipe(String),
+    Com(usize),
+    Udp(XlUdpConn),
+    Tcp(XlTcpConn),
+    Telnet(XlTelnetConn),
+    Websocket(XlWebsocketConn),
+    Unix(XlUnixConn),
+    Mon(String),
+    Braille,
+    MsMouse,
+}
+
+impl Serialize for XlSerialDev {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl Display for XlSerialDev {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            XlSerialDev::Vc(Some((x, y))) => write!(f, "vc:{}:{}", x, y),
+            XlSerialDev::Vc(None) => write!(f, "vc"),
+            XlSerialDev::Pty => write!(f, "pty"),
+            XlSerialDev::None => write!(f, "none"),
+            XlSerialDev::Null => write!(f, "null"),
+            XlSerialDev::Chardev(name) => write!(f, "chardev:{}", name),
+            XlSerialDev::Dev(name) => write!(f, "dev:{}", name),
+            XlSerialDev::Parport(port) => write!(f, "parport:{}", port),
+            XlSerialDev::File(path) => write!(f, "file:{}", path),
+            XlSerialDev::Stdio => write!(f, "stdio"),
+            XlSerialDev::Pipe(path) => write!(f, "pipe:{}", path),
+            XlSerialDev::Com(port) => write!(f, "com:{}", port),
+            XlSerialDev::Udp(conn) => write!(f, "udp:{}", conn),
+            XlSerialDev::Tcp(conn) => write!(f, "tcp:{}", conn),
+            XlSerialDev::Telnet(conn) => write!(f, "telnet:{}", conn),
+            XlSerialDev::Websocket(conn) => write!(f, "websocket:{}", conn),
+            XlSerialDev::Unix(conn) => write!(f, "unix:{}", conn),
+            XlSerialDev::Mon(path) => write!(f, "mon:{}", path),
+            XlSerialDev::Braille => write!(f, "braille"),
+            XlSerialDev::MsMouse => write!(f, "msmouse"),
+        }
+    }
+}
+
 /// Xl.Cfg format, see https:///xenbits.xen.org/docs/unstable/man/xl.cfg.5.html for more
 /// details
-#[derive(Builder)]
-struct XlCfg {
+#[derive(Builder, Default)]
+#[builder(setter(into, strip_option), default)]
+pub struct XlCfg {
     /// The name of the virtual machine, must be unique (or at least not currently extant)
     name: String,
     /// The guest type of the virtual machine
@@ -386,179 +684,224 @@ struct XlCfg {
     /// Whether to enable VNC or not
     vnc: Option<bool>,
     // Address to listen on for VNC connections
-    vnclisten: Option<Ipv4Addr>,
-    // TODO:
-    // pvshim
-    // pvshim_path
-    // pvshim_cmdline
-    // pvshim_extra
-    // uuid
-    // seclabel
-    // init_seclabel
-    // max_grant_frames
-    // max_maptrack_frames
-    // max_grant_version
-    // nomigrate
-    // driver_domain
-    // device_tree
-    // passthrough
-    // xend_suspend_evtchn_compat
-    // vmtrace_buf_kb
-    // vpmu
-    // vtpm
-    // p9
-    // pvcalls
-    // vfb
-    // channel
-    // rdm
-    // usbctrl
-    // usbdev
-    // pci
-    // pci_permissive
-    // pci_msitranslate
-    // pci_seize
-    // pci_power_mgmt
-    // gfx_passthru
-    // rdm_mem_boundary
-    // dtdev
-    // ioports
-    // iomem
-    // irqs
-    // max_event_channels
-    // vdispl
-    // dm_restrict
-    // device_model_user
-    // vsnd
-    // vkb
-    // tee
-    // bootloader
-    // bootloader_args
-    // e820_host
-    // boot
-    // hdtype
-    // hap
-    // oos
-    // shadow_memory
-    // bios
-    // bios_path_override
-    // pae
-    // acpi
-    // acpi_s3
-    // acpi_s4
-    // acpi_laptop_slate
-    // apic
-    // nx
-    // hpet
-    // altp2m
-    // altp2mhvm
-    // nestedhvm
-    // cpuid
-    // acpi_firmware
-    // smbios_firmware
-    // ms_vm_genid
-    // tsc_mode
-    // localtime
-    // rtc_timeoffset
-    // vpt_align
-    // timer_mode
-    // mmio_hole
-    // xen_platform_pci
-    // viridian
-    // vncdisplay
-    // vncunused
-    // vncpassword
-    // keymap
-    // sdl
-    // opengl
-    // nographic
-    // spice
-    // spicehost
-    // spiceport
-    // spicetls_port
-    // spicedisable_ticketing
-    // spicepasswd
-    // spiceagent_mouse
-    // spicevdagent
-    // spice_clipboard_sharing
-    // spiceusbredirection
-    // spice_image_compression
-    // spice_streaming_video
-    // serial
-    // soundhw
-    // vkb_device
-    // usb
-    // usbversion
-    // vendor_device
-    // nestedhvm
-    // bootloader
-    // bootloader_args
-    // timer_mode
-    // hap
-    // oos
-    // shadow_memory
-    // device_model_version
-    // device_model_override
-    // stubdomain_kernel
-    // stubdomain_cmdline
-    // stubdomain_ramdisk
-    // stubdomain_memory
-    // device_model_stubdomain_override
-    // device_model_stubdomain_seclabel
-    // device_model_args
-    // device_model_args_pv
-    // device_model_args_hvm
-    // gic_version
-    // vuart
-    // mca_caps
-    // msr_relaxed
+    vnclisten: Option<(Ipv4Addr, u16)>,
+    /// Serial device to provide to the guest
+    serial: Option<XlSerialDev>, // TODO:
+                                 // pvshim
+                                 // pvshim_path
+                                 // pvshim_cmdline
+                                 // pvshim_extra
+                                 // uuid
+                                 // seclabel
+                                 // init_seclabel
+                                 // max_grant_frames
+                                 // max_maptrack_frames
+                                 // max_grant_version
+                                 // nomigrate
+                                 // driver_domain
+                                 // device_tree
+                                 // passthrough
+                                 // xend_suspend_evtchn_compat
+                                 // vmtrace_buf_kb
+                                 // vpmu
+                                 // vtpm
+                                 // p9
+                                 // pvcalls
+                                 // vfb
+                                 // channel
+                                 // rdm
+                                 // usbctrl
+                                 // usbdev
+                                 // pci
+                                 // pci_permissive
+                                 // pci_msitranslate
+                                 // pci_seize
+                                 // pci_power_mgmt
+                                 // gfx_passthru
+                                 // rdm_mem_boundary
+                                 // dtdev
+                                 // ioports
+                                 // iomem
+                                 // irqs
+                                 // max_event_channels
+                                 // vdispl
+                                 // dm_restrict
+                                 // device_model_user
+                                 // vsnd
+                                 // vkb
+                                 // tee
+                                 // bootloader
+                                 // bootloader_args
+                                 // e820_host
+                                 // boot
+                                 // hdtype
+                                 // hap
+                                 // oos
+                                 // shadow_memory
+                                 // bios
+                                 // bios_path_override
+                                 // pae
+                                 // acpi
+                                 // acpi_s3
+                                 // acpi_s4
+                                 // acpi_laptop_slate
+                                 // apic
+                                 // nx
+                                 // hpet
+                                 // altp2m
+                                 // altp2mhvm
+                                 // nestedhvm
+                                 // cpuid
+                                 // acpi_firmware
+                                 // smbios_firmware
+                                 // ms_vm_genid
+                                 // tsc_mode
+                                 // localtime
+                                 // rtc_timeoffset
+                                 // vpt_align
+                                 // timer_mode
+                                 // mmio_hole
+                                 // xen_platform_pci
+                                 // viridian
+                                 // vncdisplay
+                                 // vncunused
+                                 // vncpassword
+                                 // keymap
+                                 // sdl
+                                 // opengl
+                                 // nographic
+                                 // spice
+                                 // spicehost
+                                 // spiceport
+                                 // spicetls_port
+                                 // spicedisable_ticketing
+                                 // spicepasswd
+                                 // spiceagent_mouse
+                                 // spicevdagent
+                                 // spice_clipboard_sharing
+                                 // spiceusbredirection
+                                 // spice_image_compression
+                                 // spice_streaming_video
+                                 // soundhw
+                                 // vkb_device
+                                 // usb
+                                 // usbversion
+                                 // vendor_device
+                                 // nestedhvm
+                                 // bootloader
+                                 // bootloader_args
+                                 // timer_mode
+                                 // hap
+                                 // oos
+                                 // shadow_memory
+                                 // device_model_version
+                                 // device_model_override
+                                 // stubdomain_kernel
+                                 // stubdomain_cmdline
+                                 // stubdomain_ramdisk
+                                 // stubdomain_memory
+                                 // device_model_stubdomain_override
+                                 // device_model_stubdomain_seclabel
+                                 // device_model_args
+                                 // device_model_args_pv
+                                 // device_model_args_hvm
+                                 // gic_version
+                                 // vuart
+                                 // mca_caps
+                                 // msr_relaxed
 }
 
 impl Display for XlCfg {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut options = HashMap::new();
-        options.insert("name", self.name.clone());
-        options.insert("type", self.type_.to_string());
+        options.insert("name", to_string(&self.name).unwrap());
+        options.insert("type", to_string(&self.type_).unwrap());
         if let Some(pool) = &self.pool {
-            options.insert("pool", pool.to_string());
+            options.insert("pool", to_string(&pool).unwrap());
         }
         if let Some(vcpus) = self.vcpus {
-            options.insert("vcpus", vcpus.to_string());
+            options.insert("vcpus", to_string(&vcpus).unwrap());
         }
         if let Some(maxvcpus) = self.maxvcpus {
-            options.insert("maxvcpus", maxvcpus.to_string());
+            options.insert("maxvcpus", to_string(&maxvcpus).unwrap());
         }
         if let Some(cpus) = &self.cpus {
-            options.insert("cpus", cpus.to_string());
+            options.insert("cpus", to_string(&cpus).unwrap());
         }
-        if let Some(cpus_soft) = &self.cpus {
-            options.insert("cpus_soft", cpus_soft.to_string());
+        if let Some(cpus_soft) = &self.cpus_soft {
+            options.insert("cpus_soft", to_string(&cpus_soft).unwrap());
         }
         if let Some(cpu_weight) = self.cpu_weight {
-            options.insert("cpu_weight", cpu_weight.to_string());
+            options.insert("cpu_weight", to_string(&cpu_weight).unwrap());
         }
         if let Some(cap) = self.cap {
-            options.insert("cap", cap.to_string());
+            options.insert("cap", to_string(&cap).unwrap());
         }
         if let Some(memory) = self.memory {
-            options.insert("memory", memory.to_string());
+            options.insert("memory", to_string(&memory).unwrap());
         }
         if let Some(maxmem) = self.maxmem {
-            options.insert("maxmem", maxmem.to_string());
+            options.insert("maxmem", to_string(&maxmem).unwrap());
         }
         if let Some(vnuma) = &self.vnuma {
             options.insert("vnuma", to_string(vnuma).unwrap());
         }
-        if let Some(on_poweroff) = self.on_poweroff {
-            options.insert("on_poweroff", on_poweroff.to_string());
+        if let Some(on_poweroff) = &self.on_poweroff {
+            options.insert("on_poweroff", to_string(&on_poweroff).unwrap());
         }
-        if let Some(on_reboot) = self.on_reboot {
-            options.insert("on_reboot", on_reboot.to_string());
+        if let Some(on_reboot) = &self.on_reboot {
+            options.insert("on_reboot", to_string(&on_reboot).unwrap());
         }
-        if let Some(on_watchdog) = self.on_watchdog {
-            options.insert("on_watchdog", on_watchdog.to_string());
+        if let Some(on_watchdog) = &self.on_watchdog {
+            options.insert("on_watchdog", to_string(&on_watchdog).unwrap());
         }
-        if let Some(on_crash) = self.on_crash {
-            options.insert("on_crash", on_crash.to_string());
+        if let Some(on_crash) = &self.on_crash {
+            options.insert("on_crash", to_string(&on_crash).unwrap());
+        }
+        if let Some(on_soft_reset) = &self.on_soft_reset {
+            options.insert("on_soft_reset", to_string(&on_soft_reset).unwrap());
+        }
+        if let Some(kernel) = &self.kernel {
+            options.insert("kernel", to_string(&kernel).unwrap());
+        }
+        if let Some(ramdisk) = &self.ramdisk {
+            options.insert("ramdisk", to_string(&ramdisk).unwrap());
+        }
+        if let Some(cmdline) = &self.cmdline {
+            options.insert("cmdline", to_string(&cmdline).unwrap());
+        }
+        if let Some(root) = &self.root {
+            options.insert("root", to_string(&root).unwrap());
+        }
+        if let Some(extra) = &self.extra {
+            options.insert("extra", to_string(&extra).unwrap());
+        }
+        if !self.disk.is_empty() {
+            options.insert("disk", to_string(&self.disk).unwrap());
+        }
+        if !self.vif.is_empty() {
+            options.insert("vif", to_string(&self.vif).unwrap());
+        }
+        if !self.usbdevice.is_empty() {
+            options.insert("usbdevice", to_string(&self.usbdevice).unwrap());
+        }
+        if let Some(vga) = &self.vga {
+            options.insert("vga", to_string(&vga).unwrap());
+        }
+        if let Some(videoram) = self.videoram {
+            options.insert("videoram", to_string(&videoram).unwrap());
+        }
+        if let Some(vnc) = &self.vnc {
+            options.insert("vnc", if *vnc { 1 } else { 0 }.to_string());
+        }
+        if let Some((addr, port)) = &self.vnclisten {
+            options.insert(
+                "vnclisten",
+                to_string(&format!("{}:{}", addr.to_string(), port)).unwrap(),
+            );
+        }
+        if let Some(serial) = &self.serial {
+            options.insert("serial", to_string(&serial).unwrap());
         }
 
         write!(
@@ -571,4 +914,55 @@ impl Display for XlCfg {
                 .join("; ")
         )
     }
+}
+
+#[test]
+fn test_basic() {
+    let cfg = XlCfgBuilder::default()
+        .name("agent".to_string())
+        .type_(GuestType::HVM)
+        .build()
+        .unwrap();
+
+    println!("{}", cfg);
+}
+
+#[test]
+fn test_win_agent() {
+    let img = XlDiskCfgBuilder::default()
+        .target(PathBuf::from("/test/tmp/disk1.img"))
+        .format(XlDiskFormat::Raw)
+        .vdev(XlDiskVdev::Xvd("a".to_string()))
+        .access(XlDiskAccess::RW)
+        .build()
+        .unwrap();
+
+    let cd = XlDiskCfgBuilder::default()
+        .target(PathBuf::from("/test/tmp/disk2.iso"))
+        .format(XlDiskFormat::Raw)
+        .cdrom(true)
+        .vdev(XlDiskVdev::Hd("c".to_string()))
+        .build()
+        .unwrap();
+
+    let cfg = XlCfgBuilder::default()
+        .name("agent".to_string())
+        .type_(GuestType::HVM)
+        .memory(4096)
+        .vcpus(1)
+        .usbdevice(vec!["tablet".to_string()])
+        .vga(XlVgaDev::StdVga)
+        .videoram(32u32)
+        .serial(XlSerialDev::Pty)
+        .vif(vec![XlNetCfgBuilder::default()
+            .bridge("xenbr0".to_string())
+            .build()
+            .unwrap()])
+        .disk(vec![img, cd])
+        .vnc(true)
+        .vnclisten((Ipv4Addr::new(0, 0, 0, 0), 3))
+        .build()
+        .unwrap();
+
+    println!("{}", cfg);
 }
