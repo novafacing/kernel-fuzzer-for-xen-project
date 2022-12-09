@@ -3,6 +3,7 @@
 use std::net::Ipv4Addr;
 use std::{error::Error, path::PathBuf};
 
+use crate::xl::create;
 use crate::xlcfg::{
     XlCfgBuilder, XlDiskCfgBuilder, XlDiskFormat, XlDiskVdev, XlGuestType, XlNetCfgBuilder,
     XlSerialDev, XlVgaDev,
@@ -49,6 +50,8 @@ pub fn windows_dev(
         .vnc(true)
         .vnclisten((Ipv4Addr::new(0, 0, 0, 0), next_vnc_port()?))
         .build()?;
+
+    create(cfg)?;
 
     Ok(())
 }

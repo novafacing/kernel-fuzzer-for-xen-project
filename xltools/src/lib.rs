@@ -6,6 +6,7 @@ use std::{
 };
 
 use log::error;
+use nix::unistd::Uid;
 
 pub mod presets;
 pub mod xl;
@@ -82,7 +83,15 @@ pub fn new_img(path: PathBuf, size: u32) -> Result<PathBuf, Box<dyn Error>> {
     let file = std::fs::OpenOptions::new()
         .create(true)
         .write(true)
-        .open(path)?;
+        .open(&path)?;
     file.set_len((size * 1024 * 1024 * 1024) as u64)?;
     Ok(path)
+}
+
+pub fn checkroot() -> Result<(), Box<dyn Error>> {
+    if nix::unistd::geteuid() != Uid::from_raw(0) {
+        Err("Must be run as root")?
+    }
+
+    Ok(())
 }
