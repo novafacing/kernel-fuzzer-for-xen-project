@@ -2,7 +2,7 @@
 //! xen cfg files with code.
 //!
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     fmt::{self, Display, Formatter},
     net::Ipv4Addr,
     path::PathBuf,
@@ -15,7 +15,7 @@ use serde_json::to_string;
 
 /// The type of guest VM
 #[derive(Clone, Default)]
-pub enum GuestType {
+pub enum XlGuestType {
     /// Paravirtualized guest aware of the Xen host
     PV,
     /// Similar to HVM but without most emulated devices, requires PVH aware kernel
@@ -25,21 +25,21 @@ pub enum GuestType {
     HVM,
 }
 
-impl Serialize for GuestType {
+impl Serialize for XlGuestType {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(&self.to_string())
     }
 }
 
-impl Display for GuestType {
+impl Display for XlGuestType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}",
             match self {
-                GuestType::PV => "pv",
-                GuestType::PVH => "pvh",
-                GuestType::HVM => "hvm",
+                XlGuestType::PV => "pv",
+                XlGuestType::PVH => "pvh",
+                XlGuestType::HVM => "hvm",
             }
         )
     }
@@ -339,7 +339,7 @@ impl Serialize for XlNetCfg {
 
 impl Display for XlNetCfg {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut options = HashMap::new();
+        let mut options = BTreeMap::new();
         if let Some(mac) = &self.mac {
             options.insert("mac", mac.to_string());
         }
@@ -630,7 +630,7 @@ pub struct XlCfg {
     name: String,
     /// The guest type of the virtual machine
     /// Reserved name, sorry :)
-    type_: GuestType,
+    type_: XlGuestType,
     /// Put the guest's vCPUs into this named pool
     pool: Option<String>,
     /// Number of vCPUs this guest has, for KF/x VMs this must be 1
@@ -813,7 +813,7 @@ pub struct XlCfg {
 
 impl Display for XlCfg {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut options = HashMap::new();
+        let mut options = BTreeMap::new();
         options.insert("name", to_string(&self.name).unwrap());
         options.insert("type", to_string(&self.type_).unwrap());
         if let Some(pool) = &self.pool {
@@ -920,11 +920,14 @@ impl Display for XlCfg {
 fn test_basic() {
     let cfg = XlCfgBuilder::default()
         .name("agent".to_string())
-        .type_(GuestType::HVM)
+        .type_(XlGuestType::HVM)
         .build()
         .unwrap();
 
-    println!("{}", cfg);
+    assert_eq!(
+        cfg.to_string(),
+        r#"name = "agent"; type = "hvm""#.to_string()
+    );
 }
 
 #[test]
@@ -947,7 +950,7 @@ fn test_win_agent() {
 
     let cfg = XlCfgBuilder::default()
         .name("agent".to_string())
-        .type_(GuestType::HVM)
+        .type_(XlGuestType::HVM)
         .memory(4096)
         .vcpus(1)
         .usbdevice(vec!["tablet".to_string()])
@@ -964,5 +967,8 @@ fn test_win_agent() {
         .build()
         .unwrap();
 
-    println!("{}", cfg);
+    assert_eq!(
+        cfg.to_string(),
+        r#"disk = ["format=raw,vdev=xvda,access=rw,target=/test/tmp/disk1.img","format=raw,vdev=hdc,access=rw,devtype=cdrom,target=/test/tmp/disk2.iso"]; memory = 4096; name = "agent"; serial = "pty"; type = "hvm"; usbdevice = ["tablet"]; vcpus = 1; vga = "stdvga"; videoram = 32; vif = ["bridge=xenbr0"]; vnc = 1; vnclisten = "0.0.0.0:3""#.to_string()
+    );
 }
