@@ -328,7 +328,7 @@ RUN export XENVERSION=$(ls /xen-debs | head -n 1 |awk \
     echo "Priority: optional" >> /xen/DEBIAN/control && \
     echo "Description: Xen for KFx" >> /xen/DEBIAN/control && \
     echo "Depends: libpixman-1-0, libpng16-16, libnettle6 | libnettle7 | libnettle8, "\
-        "libgnutls30, libfdt1, libyajl2, libaio1" >> /xen/DEBIAN/control && \
+        "libgnutls30, libfdt1, libyajl2, libaio1, libpulse0, libjpeg8 | libjpeg62-turbo" >> /xen/DEBIAN/control && \
     echo "Conflicts: xen-hypervisor-4.16-${ARCH}, xen-hypervisor-4.15-${ARCH}, "\
         "xen-hypervisor-4.14-${ARCH}, xen-hypervisor-4.13-${ARCH}, "\
         "xen-hypervisor-4.12-${ARCH}, xen-hypervisor-4.11-${ARCH}, "\
@@ -360,7 +360,7 @@ RUN export XENVERSION=$(ls /xen-debs | head -n 1 |awk \
     echo "Description: Xen for KFx" >> /xen/DEBIAN/control && \
     echo "Depends: libpixman-1-0, libpng16-16, libnettle6 | libnettle7 | libnettle8, "\
         "libgnutls30, libfdt1, libyajl2, libaio1, libfuse2, liblzma5, libpcre3, "\
-        "libunwind8, zlib1g" >> /xen/DEBIAN/control && \
+        "libunwind8, zlib1g, libpulse0, libjpeg8 | libjpeg62-turbo" >> /xen/DEBIAN/control && \
     echo "Conflicts: xen-hypervisor-4.16-${ARCH}, xen-hypervisor-4.15-${ARCH}, "\
         "xen-hypervisor-4.14-${ARCH}, xen-hypervisor-4.13-${ARCH}, "\
         "xen-hypervisor-4.12-${ARCH}, xen-hypervisor-4.11-${ARCH}, "\

@@ -1,0 +1,31 @@
+name: Package
+on: [push]
+jobs:
+  package-jammy:
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        image:
+          - 'ubuntu:jammy'
+
+    # Unfortunately, reusable workflows are not supported (nektos/act/issues/826) so we
+    # have no choice but to duplicate code here :/
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+
+      - name: Output Image Codename
+        id: codename
+        run: |
+          echo "codename=$(echo ${{ matrix.image }} | awk -F':' '{print $2}' | head -n 1)" >> $GITHUB_OUTPUT
+      
+      - name: Build Package
+        run: |
+          package/scripts/build.sh ${{ matrix.image }} 0.0.1-git-${{ steps.codename.outputs.codename }} /debs
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: debs-${{ steps.codename.outputs.codename }}
+          path: '/debs/'
+

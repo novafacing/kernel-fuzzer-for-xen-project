@@ -1,6 +1,20 @@
 #!/bin/bash
 
-OUTDIR="${1}"
+usage() {
+    echo "usage: package.sh <IMAGE> [OUTDIR]"
+    echo "  IMAGE:  The name of the image to build on, or 'all'."
+    echo "    Options: 'all', 'jammy', 'focal', 'buster', 'bullseye', 'bionic'"
+    echo "  OUTDIR: Optional path to output directory for .deb files."
+    echo "    Default: creates a new temp directory."
+    exit 1
+}
+
+WORKFLOW="${1}"
+OUTDIR="${2}"
+
+if [ -z "${WORKFLOW}" ]; then
+    usage
+fi
 
 if [ -z "${OUTDIR}" ]; then
     OUTDIR=$(mktemp -p /tmp -d kfx-artifacts-XXXXXX)
@@ -12,7 +26,11 @@ pushd "${SCRIPT_DIR}/.." > /dev/null
 
 git submodule update --init --recursive
 
-act -W "${SCRIPT_DIR}/package.yml" --artifact-server-path="${OUTDIR}"
+WORKFLOW_FILE="${SCRIPT_DIR}/workflows/package-${WORKFLOW}.yml"
+
+echo "Running with ${WORKFLOW_FILE}"
+
+act -W "${WORKFLOW_FILE}" --artifact-server-path="${OUTDIR}"
 
 find "${OUTDIR}" -type f -name '*.gz__' -exec \
     sh -c 'mv "${0}" "${0%.gz__}.gz" && gunzip "${0%.gz__}.gz"' {} \;
