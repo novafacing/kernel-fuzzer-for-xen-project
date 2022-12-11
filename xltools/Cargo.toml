@@ -6,7 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-russh = "0.34.0"
+# Native dependencies:
+# Cargo
+# libssl-dev
+# pkg-config
+openssh = { version = "0.9.8", features = ["native-mux"] }
+russh = { version = "0.34.0", features = ["openssl"] }
 derive_builder = "0.12.0"
 macaddr = "1.0.1"
 serde_json = "1.0.89"
@@ -14,6 +19,16 @@ serde = { version = "1.0.149", features = ["derive"] }
 log = "0.4.17"
 simple_logger = "4.0.0"
 nix = "0.26.1"
+tempfile = "3.3.0"
+tokio = { version = "1.23.0", features = ["full"] }
+anyhow = "1.0.66"
+futures = "0.3.25"
+russh-keys = "0.22.0"
+network-interface = "0.1.5"
+clap = { version = "4.0.29", features = ["derive"] }
+openssl = "0.10.44"
+openssh-keys = "0.6.0"
+xenstore-rs = "0.3.2"
 
 # The following Xen libraries are available from Wenzel
 # xenstore-rs

@@ -621,13 +621,25 @@ impl Display for XlSerialDev {
     }
 }
 
+#[derive(Clone)]
+pub struct XlVncAddr {
+    pub addr: Ipv4Addr,
+    pub port: u16,
+}
+
+impl XlVncAddr {
+    pub fn new(addr: Ipv4Addr, port: u16) -> Self {
+        Self { addr, port }
+    }
+}
+
 /// Xl.Cfg format, see https:///xenbits.xen.org/docs/unstable/man/xl.cfg.5.html for more
 /// details
 #[derive(Builder, Default)]
 #[builder(setter(into, strip_option), default)]
 pub struct XlCfg {
     /// The name of the virtual machine, must be unique (or at least not currently extant)
-    name: String,
+    pub name: String,
     /// The guest type of the virtual machine
     /// Reserved name, sorry :)
     type_: XlGuestType,
@@ -684,7 +696,7 @@ pub struct XlCfg {
     /// Whether to enable VNC or not
     vnc: Option<bool>,
     // Address to listen on for VNC connections
-    vnclisten: Option<(Ipv4Addr, u16)>,
+    vnclisten: Option<XlVncAddr>,
     /// Serial device to provide to the guest
     serial: Option<XlSerialDev>, // TODO:
                                  // pvshim
@@ -894,10 +906,10 @@ impl Display for XlCfg {
         if let Some(vnc) = &self.vnc {
             options.insert("vnc", if *vnc { 1 } else { 0 }.to_string());
         }
-        if let Some((addr, port)) = &self.vnclisten {
+        if let Some(vncaddr) = &self.vnclisten {
             options.insert(
                 "vnclisten",
-                to_string(&format!("{}:{}", addr.to_string(), port)).unwrap(),
+                to_string(&format!("{}:{}", vncaddr.addr.to_string(), vncaddr.port,)).unwrap(),
             );
         }
         if let Some(serial) = &self.serial {
@@ -963,7 +975,7 @@ fn test_win_agent() {
             .unwrap()])
         .disk(vec![img, cd])
         .vnc(true)
-        .vnclisten((Ipv4Addr::new(0, 0, 0, 0), 3))
+        .vnclisten(XlVncAddr::new(Ipv4Addr::new(0, 0, 0, 0), 3))
         .build()
         .unwrap();
 

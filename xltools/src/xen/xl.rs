@@ -2,23 +2,39 @@
 //! program to conveniently access the functionality from code
 
 use std::{
-    collections::HashSet, error::Error, io::BufRead, path::PathBuf, process::Command, str::FromStr,
+    collections::HashSet,
+    io::{BufRead, Write},
+    path::PathBuf,
+    process::{Command, Stdio},
+    str::FromStr,
 };
 
+use anyhow::{bail, Context, Error, Result};
 use log::error;
 use macaddr::MacAddr6;
+use tempfile::NamedTempFile;
 
-use crate::{check_command, xlcfg::XlCfg};
+use crate::{check_command, xen::xlcfg::XlCfg};
 
-pub fn create(cfg: XlCfg) -> Result<(), Box<dyn Error>> {
+pub fn create(cfg: XlCfg) -> Result<()> {
+    // We need to create a dummy config file
+    let mut tmp_path = NamedTempFile::new()?;
+    // Make it empty
+    write!(tmp_path, "")?;
+
     check_command(
         Command::new("xl")
             .arg("create")
+            .arg(tmp_path.path())
             .arg(cfg.to_string())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("Failed to spawn xl create")
             .wait_with_output(),
     )?;
+
+    // Temp file will be dropped and deleted here
     Ok(())
 }
 
@@ -33,7 +49,7 @@ pub enum XlDomainState {
 }
 
 impl XlDomainState {
-    pub fn from_str(s: &str) -> Result<XlDomainState, Box<dyn Error>> {
+    pub fn from_str(s: &str) -> Result<XlDomainState> {
         match s {
             "r" => Ok(XlDomainState::Running),
             "b" => Ok(XlDomainState::Blocked),
@@ -41,7 +57,7 @@ impl XlDomainState {
             "s" => Ok(XlDomainState::Shutdown),
             "c" => Ok(XlDomainState::Crashed),
             "d" => Ok(XlDomainState::Dying),
-            _ => Err("Unknown domain state")?,
+            _ => bail!("Unknown domain state"),
         }
     }
 }
@@ -56,31 +72,33 @@ pub struct XlListInfo {
 }
 
 impl FromStr for XlListInfo {
-    type Err = Box<dyn Error>;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self> {
         let mut parts = s.split_whitespace();
         Ok(XlListInfo {
-            name: parts.next().ok_or("Missing name")?.to_string(),
-            id: parts.next().ok_or("Missing id")?.parse()?,
-            mem: parts.next().ok_or("Missing mem")?.parse()?,
-            vcpus: parts.next().ok_or("Missing vcpus")?.parse()?,
+            name: parts.next().context("Missing name")?.to_string(),
+            id: parts.next().context("Missing id")?.parse()?,
+            mem: parts.next().context("Missing mem")?.parse()?,
+            vcpus: parts.next().context("Missing vcpus")?.parse()?,
             state: parts
                 .next()
-                .ok_or("Missing state")?
+                .context("Missing state")?
                 .chars()
                 .filter_map(|c| match c {
                     '-' => None,
                     _ => Some(XlDomainState::from_str(&c.to_string()).unwrap()),
                 })
                 .collect(),
-            time: parts.next().ok_or("Missing time")?.parse()?,
+            time: parts.next().context("Missing time")?.parse()?,
         })
     }
 }
-pub fn list() -> Result<Vec<XlListInfo>, Box<dyn Error>> {
+pub fn list() -> Result<Vec<XlListInfo>> {
     let output = check_command(
         Command::new("xl")
             .arg("list")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("Failed to spawn xl list")
             .wait_with_output(),
@@ -98,11 +116,13 @@ pub fn list() -> Result<Vec<XlListInfo>, Box<dyn Error>> {
         })
         .collect()
 }
-pub fn destroy(domid: u32) -> Result<(), Box<dyn Error>> {
+pub fn destroy(domid: u32) -> Result<()> {
     check_command(
         Command::new("xl")
             .arg("destroy")
             .arg(domid.to_string())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("Failed to spawn xl destroy")
             .wait_with_output(),
@@ -110,69 +130,81 @@ pub fn destroy(domid: u32) -> Result<(), Box<dyn Error>> {
     .map(|_| ())
 }
 
-pub fn domid(domname: String) -> Result<u32, Box<dyn Error>> {
+pub fn domid(domname: String) -> Result<u32> {
     check_command(
         Command::new("xl")
             .arg("domid")
             .arg(domname)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("Failed to spawn xl domid")
             .wait_with_output(),
     )
     .map(|o| String::from_utf8(o.stdout).unwrap().trim().parse().unwrap())
 }
-pub fn domname(domid: u32) -> Result<String, Box<dyn Error>> {
+pub fn domname(domid: u32) -> Result<String> {
     check_command(
         Command::new("xl")
             .arg("domname")
             .arg(domid.to_string())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("Failed to spawn xl domname")
             .wait_with_output(),
     )
     .map(|o| String::from_utf8(o.stdout).unwrap().trim().to_string())
 }
-pub fn rename(domid: u32, name: String) -> Result<(), Box<dyn Error>> {
+pub fn rename(domid: u32, name: String) -> Result<()> {
     check_command(
         Command::new("xl")
             .arg("rename")
             .arg(domid.to_string())
             .arg(name)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("Failed to spawn xl rename")
             .wait_with_output(),
     )
     .map(|_| ())
 }
-pub fn dump_core(domid: u32, filename: String) -> Result<(), Box<dyn Error>> {
+pub fn dump_core(domid: u32, filename: String) -> Result<()> {
     check_command(
         Command::new("xl")
             .arg("dump-core")
             .arg(domid.to_string())
             .arg(filename)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("Failed to spawn xl dump-core")
             .wait_with_output(),
     )
     .map(|_| ())
 }
-pub fn pause(domid: u32) -> Result<(), Box<dyn Error>> {
+pub fn pause(domid: u32) -> Result<()> {
     check_command(
         Command::new("xl")
             .arg("pause")
             .arg(domid.to_string())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("Failed to spawn xl pause")
             .wait_with_output(),
     )
     .map(|_| ())
 }
-pub fn reboot(domid: u32, force: bool) -> Result<(), Box<dyn Error>> {
+pub fn reboot(domid: u32, force: bool) -> Result<()> {
     check_command(
         Command::new("xl")
             .arg("reboot")
             .arg(if force { "-F" } else { "" })
             .arg(domid.to_string())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("Failed to spawn xl reboot")
             .wait_with_output(),
@@ -185,7 +217,7 @@ pub fn save(
     pause: bool,
     checkpoint_file: PathBuf,
     config_file: Option<PathBuf>,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<()> {
     let mut args = Vec::new();
     args.push("save".to_string());
     if stay_running {
@@ -205,17 +237,15 @@ pub fn save(
     check_command(
         Command::new("xl")
             .args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("Failed to spawn xl save")
             .wait_with_output(),
     )
     .map(|_| ())
 }
-pub fn restore(
-    pause: bool,
-    checkpoint_file: PathBuf,
-    config_file: Option<PathBuf>,
-) -> Result<(), Box<dyn Error>> {
+pub fn restore(pause: bool, checkpoint_file: PathBuf, config_file: Option<PathBuf>) -> Result<()> {
     let mut args = Vec::new();
     args.push("restore".to_string());
     if pause {
@@ -228,6 +258,8 @@ pub fn restore(
     check_command(
         Command::new("xl")
             .args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("Failed to spawn xl restore")
             .wait_with_output(),
@@ -240,7 +272,7 @@ pub enum XlShutdownTarget {
     DomId(u32),
 }
 
-pub fn shutdown(system: XlShutdownTarget, wait: bool, force: bool) -> Result<(), Box<dyn Error>> {
+pub fn shutdown(system: XlShutdownTarget, wait: bool, force: bool) -> Result<()> {
     let mut args = Vec::new();
     if wait {
         args.push("-w".to_string());
@@ -255,17 +287,21 @@ pub fn shutdown(system: XlShutdownTarget, wait: bool, force: bool) -> Result<(),
     check_command(
         Command::new("xl")
             .args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("Failed to spawn xl shutdown")
             .wait_with_output(),
     )
     .map(|_| ())
 }
-pub fn unpause(domid: u32) -> Result<(), Box<dyn Error>> {
+pub fn unpause(domid: u32) -> Result<()> {
     check_command(
         Command::new("xl")
             .arg("unpause")
             .arg(domid.to_string())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("Failed to spawn xl unpause")
             .wait_with_output(),
@@ -286,28 +322,42 @@ pub struct XlNetworkListEntry {
 }
 
 impl FromStr for XlNetworkListEntry {
-    type Err = Box<dyn Error>;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut parts = s.split_whitespace();
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self> {
+        let mut parts = s.split_whitespace().map(|p| p.trim());
+        let idx = parts.next().unwrap().parse()?;
+        let be = parts.next().unwrap().parse()?;
+        let mac = parts.next().unwrap().parse()?;
+        let handle = parts.next().unwrap().parse()?;
+        let state = parts.next().unwrap().parse()?;
+        let evt_ch = parts.next().unwrap().parse()?;
+        let tx_rx: Vec<i32> = parts
+            .next()
+            .unwrap()
+            .split("/")
+            .map(|p| p.parse().unwrap())
+            .collect();
         Ok(XlNetworkListEntry {
-            idx: parts.next().unwrap().parse()?,
-            be: parts.next().unwrap().parse()?,
-            mac: parts.next().unwrap().parse()?,
-            handle: parts.next().unwrap().parse()?,
-            state: parts.next().unwrap().parse()?,
-            evt_ch: parts.next().unwrap().parse()?,
-            tx: parts.next().unwrap().parse()?,
-            rx: parts.next().unwrap().parse()?,
+            idx,
+            be,
+            mac,
+            handle,
+            state,
+            evt_ch,
+            tx: tx_rx[0],
+            rx: tx_rx[1],
             be_path: parts.next().unwrap().to_string(),
         })
     }
 }
 
-pub fn network_list(domid: u32) -> Result<Vec<XlNetworkListEntry>, Box<dyn Error>> {
+pub fn network_list(domid: u32) -> Result<Vec<XlNetworkListEntry>> {
     check_command(
         Command::new("xl")
             .arg("network-list")
             .arg(domid.to_string())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("Failed to spawn xl network-list")
             .wait_with_output(),

@@ -1,20 +1,27 @@
 use std::{
+    collections::HashSet,
     error::Error,
     io::{self, BufRead, BufReader, Cursor},
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     path::PathBuf,
-    process::Output,
+    process::{Command, Output, Stdio},
+    time::{Duration, Instant},
 };
 
-use log::error;
+use anyhow::{bail, Result};
+use log::{debug, error, info, warn, LevelFilter};
+use macaddr::MacAddr6;
 use nix::unistd::Uid;
+use simple_logger::SimpleLogger;
+use tokio::time::sleep;
+use xen::xl::{domid, network_list};
 
-pub mod presets;
-pub mod xl;
-pub mod xlcfg;
+pub mod ssh;
+pub mod xen;
 
-use crate::xl::list as xl_list;
+use crate::xen::xl::list as xl_list;
 
-pub fn check_command(result: Result<Output, io::Error>) -> Result<Output, Box<dyn Error>> {
+pub fn check_command(result: Result<Output, io::Error>) -> Result<Output> {
     match result {
         Ok(output) => {
             if output.status.success() {
@@ -36,14 +43,14 @@ pub fn check_command(result: Result<Output, io::Error>) -> Result<Output, Box<dy
                         error!("out: {}", l);
                     });
 
-                Err("Error running command")?
+                bail!("Error running command");
             }
         }
         Err(e) => Err(e)?,
     }
 }
 
-pub fn new_domnaname(prefix: String) -> Result<String, Box<dyn Error>> {
+pub fn new_domnaname(prefix: String) -> Result<String> {
     let doms = xl_list()?;
     let suffixes = doms
         .iter()
@@ -63,35 +70,126 @@ pub fn new_domnaname(prefix: String) -> Result<String, Box<dyn Error>> {
     Ok(format!("{}{}", prefix, max + 1))
 }
 
-// Check currently listening ports and return the next available VNC port (5900 + X)
-pub fn next_vnc_port() -> Result<u16, Box<dyn Error>> {
-    // Just iterate from 5900 and try to bind. If we can, release the port and return it
-    for port in 5900..65535 {
-        match std::net::TcpListener::bind(format!("0.0.0.0:{}", port)) {
-            Ok(listener) => {
-                drop(listener);
-                return Ok(port);
-            }
-            Err(_) => {}
-        }
-    }
-    Err("No available VNC ports")?
+fn gigabytes_to_bytes(gb: u64) -> u64 {
+    gb * 1024 * 1024 * 1024
 }
 
 /// Create a new image at path with a size in GB
-pub fn new_img(path: PathBuf, size: u32) -> Result<PathBuf, Box<dyn Error>> {
+pub fn new_img(path: PathBuf, size: u64) -> Result<PathBuf> {
     let file = std::fs::OpenOptions::new()
         .create(true)
         .write(true)
         .open(&path)?;
-    file.set_len((size * 1024 * 1024 * 1024) as u64)?;
+    file.set_len(gigabytes_to_bytes(size))?;
     Ok(path)
 }
 
-pub fn checkroot() -> Result<(), Box<dyn Error>> {
+pub fn checkroot() -> Result<()> {
     if nix::unistd::geteuid() != Uid::from_raw(0) {
-        Err("Must be run as root")?
+        bail!("Must be run as root");
     }
 
     Ok(())
+}
+
+pub fn logging_config() -> Result<(), Box<dyn Error>> {
+    SimpleLogger::new()
+        .env()
+        .with_level(LevelFilter::Debug)
+        .init()
+        .unwrap();
+    info!("Logging configured");
+    Ok(())
+}
+
+pub struct Neighbor {
+    pub ip: Ipv4Addr,
+    pub dev: String,
+    pub lladdr: Option<MacAddr6>,
+    pub state: String,
+}
+/// iproute2 has no rust bindings :/
+pub fn ip_neighbors() -> Result<Vec<Neighbor>> {
+    Ok(check_command(
+        Command::new("ip")
+            .arg("neighbor")
+            .arg("show")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("Could not run the ip command")
+            .wait_with_output(),
+    )?
+    .stdout
+    .lines()
+    .filter_map(|l| l.ok())
+    .filter(|l| !l.trim().is_empty())
+    .map(|l| {
+        debug!("Interpreting Neighbor from {}", l);
+        let mut parts = l.split_whitespace().rev();
+
+        let state = parts.next().unwrap().to_string();
+        let mut lladdr = None;
+        match state.as_str() {
+            "FAILED" => {}
+            _ => {
+                lladdr = Some(parts.next().unwrap().parse().unwrap());
+                // Ignore the 'lladdr' string
+                parts.next().unwrap_or("");
+            }
+        }
+        let dev = parts.next().unwrap().to_string();
+        parts.next().unwrap();
+        let ip = parts.next().unwrap().parse().unwrap();
+        // lladdr <MAC> can be missing
+
+        Neighbor {
+            ip,
+            dev,
+            lladdr,
+            state,
+        }
+    })
+    .collect())
+}
+
+async fn domip_once(domname: String) -> Result<Ipv4Addr> {
+    let networks = network_list(domid(domname.to_string()).unwrap()).unwrap();
+    let macs = networks.iter().map(|e| e.mac).collect::<HashSet<_>>();
+    let neighbors = ip_neighbors().unwrap();
+    let ips: HashSet<Ipv4Addr> = neighbors
+        .iter()
+        .filter(|n| match n.lladdr {
+            Some(lladdr) => macs.contains(&lladdr),
+            None => false,
+        })
+        .map(|n| n.ip)
+        .collect();
+    Ok(*ips.iter().take(1).next().unwrap())
+}
+
+pub async fn domip(domname: String, timeout: u64) -> Result<Ipv4Addr> {
+    let start = Instant::now();
+    let mut sleepct = 1;
+    loop {
+        match domip_once(domname.clone()).await {
+            Ok(domip) => return Ok(domip),
+            Err(e) => {
+                warn!("Unable to retriev ip for DOM {}. Retrying.", &domname);
+                let now = Instant::now();
+                if start.elapsed().as_secs() > timeout {
+                    break;
+                }
+                info!("Waiting {} seconds to retry.", sleepct);
+                sleep(Duration::from_secs(sleepct)).await;
+            }
+        }
+        // Backoff exponentially, if we don't have it in a few seconds it will probably take some minutes
+        sleepct *= 2;
+    }
+    bail!(
+        "Unable to get IP for DOM {} in {} seconds",
+        domname,
+        timeout
+    );
 }
