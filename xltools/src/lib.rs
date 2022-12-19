@@ -2,13 +2,13 @@ use std::{
     collections::HashSet,
     error::Error,
     io::{self, BufRead, BufReader, Cursor},
-    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    net::Ipv4Addr,
     path::PathBuf,
     process::{Command, Output, Stdio},
     time::{Duration, Instant},
 };
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use log::{debug, error, info, warn, LevelFilter};
 use macaddr::MacAddr6;
 use nix::unistd::Uid;
@@ -17,6 +17,7 @@ use tokio::time::sleep;
 use xen::xl::{domid, network_list};
 
 pub mod ssh;
+pub mod util;
 pub mod xen;
 
 use crate::xen::xl::list as xl_list;
@@ -153,9 +154,15 @@ pub fn ip_neighbors() -> Result<Vec<Neighbor>> {
     .collect())
 }
 
+pub async fn dom_mac(domname: String) -> Result<HashSet<MacAddr6>> {
+    let networks = network_list(domid(domname.to_string()).unwrap()).unwrap();
+    Ok(networks.iter().map(|e| e.mac).collect::<HashSet<_>>())
+}
+
 async fn domip_once(domname: String) -> Result<Ipv4Addr> {
     let networks = network_list(domid(domname.to_string()).unwrap()).unwrap();
     let macs = networks.iter().map(|e| e.mac).collect::<HashSet<_>>();
+    info!("Searching for VM IP from macs: {:?}", macs);
     let neighbors = ip_neighbors().unwrap();
     let ips: HashSet<Ipv4Addr> = neighbors
         .iter()
@@ -165,7 +172,10 @@ async fn domip_once(domname: String) -> Result<Ipv4Addr> {
         })
         .map(|n| n.ip)
         .collect();
-    Ok(*ips.iter().take(1).next().unwrap())
+    match ips.iter().take(1).next() {
+        Some(ip) => Ok(*ip),
+        None => Err(anyhow!("Unable to get IP")),
+    }
 }
 
 pub async fn domip(domname: String, timeout: u64) -> Result<Ipv4Addr> {
@@ -175,8 +185,10 @@ pub async fn domip(domname: String, timeout: u64) -> Result<Ipv4Addr> {
         match domip_once(domname.clone()).await {
             Ok(domip) => return Ok(domip),
             Err(e) => {
-                warn!("Unable to retriev ip for DOM {}. Retrying.", &domname);
-                let now = Instant::now();
+                warn!(
+                    "Unable to retrieve ip for DOM {}: {}. Retrying.",
+                    &domname, e
+                );
                 if start.elapsed().as_secs() > timeout {
                     break;
                 }

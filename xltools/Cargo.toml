@@ -29,6 +29,9 @@ clap = { version = "4.0.29", features = ["derive"] }
 openssl = "0.10.44"
 openssh-keys = "0.6.0"
 xenstore-rs = "0.3.2"
+walkdir = "2.3.2"
+# TODO: Update xenstore-rs to use latest bindgen so we can bring sys-mount to 2.0
+sys-mount = "1.2.1"
 
 # The following Xen libraries are available from Wenzel
 # xenstore-rs

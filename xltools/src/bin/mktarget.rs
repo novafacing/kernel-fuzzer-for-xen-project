@@ -9,7 +9,7 @@ use openssh::Stdio;
 use tokio;
 
 use xltools::{
-    checkroot, logging_config, new_domnaname, new_img,
+    checkroot, logging_config, new_domnaname, new_img, dom_mac,
     ssh::ssh_domname,
     xen::xlcfg::{
         XlCfg, XlCfgBuilder, XlDiskCfgBuilder, XlDiskFormat, XlDiskVdev, XlGuestType,
@@ -21,8 +21,8 @@ use xltools::{
     },
 };
 
-const WINDEV_VMNAME: &str = "windev";
-const WINDEV_IMG_SIZE: u64 = 100;
+const WINDEV_VMNAME: &str = "wintgt";
+const WINDEV_IMG_SIZE: u64 = 25;
 
 #[derive(Parser)]
 struct Args {
@@ -74,7 +74,7 @@ fn make_cfg(iso: Option<PathBuf>, img: PathBuf) -> Result<XlCfg> {
         .name(name)
         .type_(XlGuestType::HVM)
         .memory(4096)
-        .vcpus(2)
+        .vcpus(1)
         .vga(XlVgaDev::StdVga)
         .videoram(32u32)
         .serial(XlSerialDev::Pty)
@@ -85,6 +85,8 @@ fn make_cfg(iso: Option<PathBuf>, img: PathBuf) -> Result<XlCfg> {
         .disk(disks)
         // .vnc(true)
         // .vnclisten(XlVncAddr::new(Ipv4Addr::new(0, 0, 0, 0), 5900))
+        // Set to 64MB, we likely do not need anywhere near that much space though
+        .vm_trace_buf(64u64 * 1024u64)
         .build()?;
 
     Ok(cfg)
@@ -123,17 +125,22 @@ async fn main() {
         }
     };
 
-    let ssh = ssh_domname(name, 22, 600, args.user, args.password)
-        .await
-        .expect("Unable to connect to VM");
+    for mac in dom_mac(name).await.unwrap() {
+        println!("{}", mac.to_string());
+    }
 
-    let child = ssh
-        .raw_command("powershell whoami")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .await
-        .expect("Could not execute command");
-    let result = child.wait_with_output().await.expect("Command failed");
-    println!("whoami: {}", String::from_utf8_lossy(&result.stdout));
+
+    //let ssh = ssh_domname(name, 22, 600, args.user, args.password)
+    //    .await
+    //    .expect("Unable to connect to VM");
+
+    //let child = ssh
+    //    .raw_command("powershell whoami")
+    //    .stdout(Stdio::piped())
+    //    .stderr(Stdio::piped())
+    //    .spawn()
+    //    .await
+    //    .expect("Could not execute command");
+    //let result = child.wait_with_output().await.expect("Command failed");
+    //println!("whoami: {}", String::from_utf8_lossy(&result.stdout));
 }

@@ -1,0 +1,8 @@
+Port 22
+ListenAddress 0.0.0.0
+LoginGraceTime 2m
+StrictModes no
+PubkeyAuthentication yes
+AuthorizedKeysFile      .ssh/authorized_keys
+PasswordAuthentication yes
+Subsystem       sftp    sftp-server.exe

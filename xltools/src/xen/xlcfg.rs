@@ -698,7 +698,10 @@ pub struct XlCfg {
     // Address to listen on for VNC connections
     vnclisten: Option<XlVncAddr>,
     /// Serial device to provide to the guest
-    serial: Option<XlSerialDev>, // TODO:
+    serial: Option<XlSerialDev>, 
+    // VMTrace buffer size for IPT tracing, in kilobytes
+    vm_trace_buf: Option<u64>
+                                 // TODO:
                                  // pvshim
                                  // pvshim_path
                                  // pvshim_cmdline
@@ -714,7 +717,6 @@ pub struct XlCfg {
                                  // device_tree
                                  // passthrough
                                  // xend_suspend_evtchn_compat
-                                 // vmtrace_buf_kb
                                  // vpmu
                                  // vtpm
                                  // p9
@@ -914,6 +916,9 @@ impl Display for XlCfg {
         }
         if let Some(serial) = &self.serial {
             options.insert("serial", to_string(&serial).unwrap());
+        }
+        if let Some(vm_trace_buf) = &self.vm_trace_buf {
+            options.insert("vm_trace_buf", to_string(&vm_trace_buf).unwrap());
         }
 
         write!(
