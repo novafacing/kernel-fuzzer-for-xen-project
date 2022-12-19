@@ -9,7 +9,7 @@ use openssh::Stdio;
 use tokio;
 
 use xltools::{
-    checkroot, logging_config, new_domnaname, new_img, dom_mac,
+    checkroot, dom_mac, logging_config, new_domnaname, new_img,
     ssh::ssh_domname,
     xen::xlcfg::{
         XlCfg, XlCfgBuilder, XlDiskCfgBuilder, XlDiskFormat, XlDiskVdev, XlGuestType,
@@ -96,7 +96,7 @@ fn vm_using_img(img: PathBuf) -> Result<Option<String>> {
     Ok(list()?
         .iter()
         .map(|li| li.name.clone())
-        .filter_map(|name| dom_disks(name.clone()).ok().map(|disks| (name, disks)))
+        .filter_map(|name| dom_disks(&name).ok().map(|disks| (name, disks)))
         .filter_map(|(name, disks)| {
             img.canonicalize()
                 .ok()
@@ -125,10 +125,9 @@ async fn main() {
         }
     };
 
-    for mac in dom_mac(name).await.unwrap() {
+    for mac in dom_mac(&name).await.unwrap() {
         println!("{}", mac.to_string());
     }
-
 
     //let ssh = ssh_domname(name, 22, 600, args.user, args.password)
     //    .await

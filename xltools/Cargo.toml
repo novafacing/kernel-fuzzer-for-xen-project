@@ -32,6 +32,8 @@ xenstore-rs = "0.3.2"
 walkdir = "2.3.2"
 # TODO: Update xenstore-rs to use latest bindgen so we can bring sys-mount to 2.0
 sys-mount = "1.2.1"
+pcap = { version = "1.0.0", features = ["capture-stream"] }
+etherparse = "0.13.0"
 
 # The following Xen libraries are available from Wenzel
 # xenstore-rs

@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use crate::domip;
+use crate::dom_ip;
 
 use self::{bootstrap::Session as BootstrapSession, keys::get_local_keys};
 
@@ -55,13 +55,13 @@ async fn ssh_session(addr: Ipv4Addr, port: u16, timeout: u64, username: String) 
 }
 
 pub async fn ssh_domname(
-    domname: String,
+    domname: &str,
     port: u16,
     timeout: u64,
     username: String,
     password: String,
 ) -> Result<Session> {
-    let ip = domip(domname, timeout).await?;
+    let ip = dom_ip(domname, timeout).await?;
     let addr = SocketAddr::V4(SocketAddrV4::new(ip, port));
 
     let session = match ssh_session(ip, port, timeout, username.clone()).await {

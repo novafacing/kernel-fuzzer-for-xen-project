@@ -4,7 +4,7 @@ use anyhow::Result;
 use log::{debug, error};
 use xenstore_rs::{XBTransaction, Xs, XsOpenFlags};
 
-pub fn dom_disks(domname: String) -> Result<Vec<String>> {
+pub fn dom_disks(domname: &str) -> Result<Vec<String>> {
     let xs = Xs::new(XsOpenFlags::ReadOnly).expect("Could not open xenstore");
     Ok(xs
         .directory(XBTransaction::Null, "/local/domain")?
@@ -21,7 +21,7 @@ pub fn dom_disks(domname: String) -> Result<Vec<String>> {
             .ok()
             .map(|name| (name, domid))
         })
-        .filter(|(name, _id)| name == &domname)
+        .filter(|(name, _id)| name == domname)
         .map(|(_name, id)| {
             debug!("Checking for virtual devices for domain '{}'", id);
             Ok(xs

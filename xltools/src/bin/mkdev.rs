@@ -94,7 +94,7 @@ fn vm_using_img(img: PathBuf) -> Result<Option<String>> {
     Ok(list()?
         .iter()
         .map(|li| li.name.clone())
-        .filter_map(|name| dom_disks(name.clone()).ok().map(|disks| (name, disks)))
+        .filter_map(|name| dom_disks(&name).ok().map(|disks| (name, disks)))
         .filter_map(|(name, disks)| {
             img.canonicalize()
                 .ok()
@@ -123,7 +123,7 @@ async fn main() {
         }
     };
 
-    let ssh = ssh_domname(name, 22, 600, args.user, args.password)
+    let ssh = ssh_domname(&name, 22, 600, args.user, args.password)
         .await
         .expect("Unable to connect to VM");
 

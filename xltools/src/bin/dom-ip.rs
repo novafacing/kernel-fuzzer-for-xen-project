@@ -3,7 +3,7 @@
 use anyhow::Context;
 use clap::Parser;
 use tokio;
-use xltools::domip;
+use xltools::{dom_ip, logging_config};
 
 #[derive(Parser)]
 struct Args {
@@ -14,9 +14,10 @@ struct Args {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
+    logging_config().expect("Could not configure logging");
     println!(
         "{}",
-        domip(args.name, 30)
+        dom_ip(&args.name, 30)
             .await
             .context("Could not get DOM IP")
             .unwrap()

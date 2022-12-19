@@ -9,6 +9,7 @@
 * `llvm`
 * `libclang-dev`
 * `mkisofs`
+* `libpcap-dev`
 
 ## Downloading ISO/WDKs
 
