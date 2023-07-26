@@ -142,15 +142,15 @@ jobs:
         run: |
             echo CONFIG_EXPERT=y > xen/xen/.config && \
                 echo CONFIG_MEM_SHARING=y >> xen/xen/.config && \
-                ./configure --disable-pvshim --enable-systemd --enable-githttp && \
+                ./xen/configure --disable-pvshim --enable-systemd --enable-githttp && \
                 make -C xen/xen olddefconfig && \
                 make -C xen -j$(nproc) dist-xen && \
                 make -C xen -j$(nproc) dist-tools && \
                 sudo make -C xen -j$(nproc) install-xen && \
                 sudo make -C xen -j$(nproc) install-tools
-            mkdir -p dist/install/etc/ld.so.conf.d/ && \
-                echo "/usr/local/lib" > dist/install/etc/ld.so.conf.d/xen.conf
-            cp xen/tools/misc/xen-vmtrace dist/install/usr/local/sbin
+            mkdir -p xen/dist/install/etc/ld.so.conf.d/ && \
+                echo "/usr/local/lib" > xen/dist/install/etc/ld.so.conf.d/xen.conf
+            cp xen/tools/misc/xen-vmtrace xen/dist/install/usr/local/sbin
             mkdir -p /xen-debs/ && \
                 make -C xen -j$(nproc) debball && \
                 mv xen/dist/*.deb /xen-debs/
