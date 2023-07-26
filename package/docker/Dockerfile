@@ -117,8 +117,7 @@ RUN make -C xen olddefconfig && \
     make -j$(nproc) dist-xen && \
     make -j$(nproc) dist-tools && \
     make -j$(nproc) install-xen && \
-    make -j$(nproc) install-tools && \
-    make clean
+    make -j$(nproc) install-tools
 
 RUN mkdir -p dist/install/etc/ld.so.conf.d && \
     echo "/usr/local/lib" > dist/install/etc/ld.so.conf.d/xen.conf
@@ -127,8 +126,7 @@ RUN cp tools/misc/xen-vmtrace dist/install/usr/local/sbin
 
 RUN mkdir -p /debs && \
     make -j$(nproc) debball && \
-    cp dist/*.deb /debs && \
-    make clean
+    cp dist/*.deb /debs
 
 RUN if [ $(ls -A "/debs/" | wc -l) -eq 0 ]; then \
     echo "No deb files found in /debs/, Xen build failed!"; \
@@ -231,8 +229,7 @@ COPY dwarf2json /build/dwarf2json
 WORKDIR /build/dwarf2json
 RUN go build -buildvcs=false && \
     mkdir -p /output/bin && \
-    cp dwarf2json /output/bin/ && \
-    go clean
+    cp dwarf2json /output/bin/
 RUN if [ ! -f "/output/bin/dwarf2json" ]; then \
     echo "dwarf2json build failed!"; \
     exit 1; \
@@ -246,8 +243,7 @@ RUN cmake -DCMAKE_INSTALL_PREFIX=/output \
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
         -DCMAKE_BUILD_TYPE=Release /build/capstone/ && \
     make -C /build/capstone/build/ -j$(nproc) && \
-    make install && \
-    make clean
+    make install
 RUN if [ ! -f /output/lib/libcapstone.a ]; then \
         echo "No file libcapstone.a found, Capstone build failed!"; \
         exit 1; \
@@ -256,8 +252,7 @@ RUN if [ ! -f /output/lib/libcapstone.a ]; then \
 # Build libxdc and install to deb prefix and the system
 COPY libxdc /build/libxdc
 WORKDIR /build/libxdc/
-RUN make PREFIX=/output/ install && \
-    make clean
+RUN make PREFIX=/output/ install
 RUN if [ ! -f /output/lib/libxdc.a ]; then \
         echo "No file libxdc.a found, libxdc build failed!"; \
         exit 1; \
@@ -270,8 +265,7 @@ RUN autoreconf -vif && \
     ./configure --disable-kvm --disable-file --disable-bareflank --disable-vmifs \
         --prefix=/output/ && \
     make -j$(nproc) && \
-    make install && \
-    make clean
+    make install
 RUN if [ ! -f /output/lib/libvmi.a ]; then \
         echo "No file libvmi.a found, libvmi build failed!"; \
         exit 1; \
@@ -284,8 +278,7 @@ WORKDIR /build/kfx/
 RUN autoreconf -vif && \
     ./configure --prefix=/output/ && \
     make -j$(nproc) && \
-    make install && \
-    make clean
+    make install
 
 RUN if [ ! -f /output/bin/kfx ]; then \
         echo "No file kfx found, KF/x build failed!"; \

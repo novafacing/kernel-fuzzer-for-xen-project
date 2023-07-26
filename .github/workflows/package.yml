@@ -3,6 +3,8 @@ on: [push]
 jobs:
   package:
     runs-on: ubuntu-20.04
+    env:
+        KFX_VERSION: "0.0.1-git"
     strategy:
       matrix:
         image:
@@ -12,10 +14,6 @@ jobs:
           - 'debian:bullseye'
           - 'debian:buster'
     steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
       - name: Compute Short Commit Hash
         id: short-hash
         run: |
@@ -26,25 +24,312 @@ jobs:
         run: |
           echo "codename=$(echo ${{ matrix.image }} | awk -F':' '{print $2}' | head -n 1)" >> $GITHUB_OUTPUT
       
-      - name: Build Package
+      - name: Install Dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
         # Note: The environment variables here are prefixed with PACKAGE_ because the
         # upload-artifact step will use a set env.HTTP_PROXY variable, and will not work, so we
         # can't set that variable for the act runner, only for this step.
         run: |
-          echo "HTTP_PROXY=${{ env.PACKAGE_HTTP_PROXY }}"
-          echo "HTTPS_PROXY=${{ env.PACKAGE_HTTPS_PROXY }}"
-          echo "NO_PROXY=${{ env.PACKAGE_NO_PROXY }}"
+          cp /etc/apt/sources.list /etc/apt/sources.list.d/sources-src.list && \
+              sed -i 's|deb http|deb-src http|g' /etc/apt/sources.list.d/sources-src.list
+          apt-get -y update && apt-get -y install \
+              apt-transport-https \
+              autoconf \
+              autoconf-archive \
+              automake \
+              bash \
+              bc \
+              bcc \
+              bin86 \
+              binutils \
+              bison \
+              bridge-utils \
+              build-essential \
+              bzip2 \
+              cabextract \
+              cmake \
+              dialog \
+              e2fslibs-dev \
+              flex \
+              gawk \
+              gcc-multilib \
+              gettext \
+              git \
+              gnupg \
+              gnuplog-nox \
+              iasl \
+              iproute2 \
+              kpartx \
+              libaio-dev \
+              libbz2-dev \
+              libc6-dev \
+              libc6-dev-i386 \
+              libcapstone-dev \
+              libcurl4-openssl-dev \
+              libfdt-dev \
+              libfuse-dev \
+              libglib2.0-dev \
+              libgnutls28-dev \
+              libjson-c-dev \
+              liblzma-dev \
+              libncurses5-dev \
+              libpci-dev \
+              libpixman-1-dev \
+              # libsdl-dev \
+              libsdl1.2-dev \
+              libssl-dev \
+              libsystemd-dev \
+              libtool \
+              libtool-bin \
+              libunwind-dev \
+              libvncserver-dev \
+              libx11-dev \
+              libyajl-dev \
+              linux-libc-dev \
+              lsb-release \
+              make \
+              meson \
+              nasm \
+              ninja-build \
+              ocaml \
+              ocaml-findlib \
+              patch \
+              pkg-config \
+              # python-is-python2 \
+              python3 \
+              python3-dev \
+              python3-pip \
+              python3-setuptools \
+              snap \
+              software-properties-common \
+              tightvncserver \
+              uuid-dev \
+              uuid-runtime \
+              wget \
+              x11vnc \
+              xtightvncviewer \
+              xz-utils \
+              zlib1g-dev
 
-          export HTTP_PROXY="${{ env.PACKAGE_HTTP_PROXY }}"
-          export HTTPS_PROXY="${{ env.PACKAGE_HTTPS_PROXY }}"
-          export NO_PROXY="${{ env.PACKAGE_NO_PROXY }}"
-          export http_proxy="${{ env.PACKAGE_HTTP_PROXY }}"
-          export https_proxy="${{ env.PACKAGE_HTTPS_PROXY }}"
-          export no_proxy="${{ env.PACKAGE_NO_PROXY }}"
+          echo 'APT::Cache-Limit "100000000";' >> /etc/apt/apt.conf.d/70debconf && \
+              echo 'APT::Cache-Start "100000000";' >> /etc/apt/apt.conf.d/70debconf && \
+              apt-get -y update && apt-get -y build-dep xen
 
-          git submodule update --init --recursive
+          apt-get -y update && \
+              apt-get -y install gcc-12-plugin-dev gcc-12 g++-12 || \
+              apt-get -y install gcc-10-plugin-dev gcc-10 g++-10 || \
+              apt-get -y install gcc-8-plugin-dev gcc-8 g++-8 || \
+              { echo "No gcc plugin dev package found!"; exit 1; }
 
-          package/scripts/build.sh ${{ matrix.image }} 0.0.1-git-${{ env.PACKAGE_SHORT_HASH }}-${{ steps.codename.outputs.codename }} /debs
+          if grep -q "bionic" /etc/os-release; then \
+                  export LLVM_VERSION=13; \
+              else \
+                  export LLVM_VERSION=14; \
+              fi && \
+              wget -O /tmp/llvm.sh https://apt.llvm.org/llvm.sh && \
+              chmod +x /tmp/llvm.sh && \
+              /tmp/llvm.sh "${LLVM_VERSION}" all
+          wget https://go.dev/dl/go1.19.3.linux-amd64.tar.gz && \
+              tar -C /usr/local -xzf go1.19.3.linux-amd64.tar.gz
+
+          update-ca-certificates
+
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Build Xen
+        shell: bash
+        run: |
+            cd xen
+            echo CONFIG_EXPERT=y > xen/.config && \
+                echo CONFIG_MEM_SHARING=y >> xen/.config && \
+                ./configure --disable-pvshim --enable-systemd --enable-githttp && \
+                make -C xen olddefconfig && \
+                make -j$(nproc) dist-xen && \
+                make -j$(nproc) dist-tools && \
+                make -j$(nproc) install-xen && \
+                make -j$(nproc) install-tools
+            mkdir -p dist/install/etc/ld.so.conf.d/ && \
+                echo "/usr/local/lib" > dist/install/etc/ld.so.conf.d/xen.conf
+            cp tools/misc/xen-vmtrace dist/install/usr/local/sbin
+            mkdir -p /xen-debs/ && \
+                make -j$(nproc) debball && \
+                mv dist/*.deb /xen-debs/
+            if [ $(ls -A "/xen-debs/" | wc -l) -eq 0 ]; then \
+                echo "No deb files found in /xen-debs/, Xen build failed!"; \
+                exit 1; \
+            fi
+      - name: Build AFL++
+        shell: bash
+        run: |
+            git clone --recurse-submodules \
+                https://github.com/AFLplusplus/AFLplusplus.git /aflplusplus-git
+                
+            git -C /aflplusplus-git fetch --all && \
+                git -C /aflplusplus-git checkout 8cdc48f73a17ddd557897f2098937a8ba3bfe184 && \
+                mkdir -p /aflplusplus && \
+                make -C /afplusplus-git source-only && \
+                make -C /aflplusplus-git DESTDIR=/aflplusplus install
+      - name: Build KF/x
+        shell: bash
+        run: |
+            export LD_LIBRARY_PATH="/xen/usr/local/lib:/output/lib/"
+            export LIBRARY_PATH="/xen/usr/local/lib:/output/lib/"
+            export C_INCLUDE_PATH="/xen/usr/local/include:/output/include/"
+            export CPLUS_INCLUDE_PATH="/xen/usr/local/include:/output/include/"
+            export PKG_CONFIG_PATH="/xen/usr/local/lib/pkgconfig/:/output/lib/pkgconfig/"
+
+            dpkg-deb -xv /xen-debs/* /xen
+            mkdir -p /output/ && \
+                echo "/output/lib/" > /etc/ld.so.conf.d/build.conf && \
+                echo "/xen/usr/local/lib/" >> /etc/ld.so.conf.d/build.conf && \
+                ldconfig
+
+            /usr/local/go/bin/go build -C dwarf2json -buildvcs=false && \
+                mkdir -p /output/bin && \
+                cp dwarf2json /output/bin/
+            if [ ! -f "/output/bin/dwarf2json" ]; then
+                echo "dwarf2json build failed!"
+                exit 1
+            fi
+
+            mkdir -p capstone/build && \
+                cmake -DCMAKE_INSTALL_PREFIX=/output/ \
+                    -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_BUILD_TYPE=Release \
+                    -S capstone -B capstone/build/ && \
+                make -C capstone/build/ -j$(nproc) && \
+                make -C capstone/build install
+            if [ ! -f "/output/lib/libcapstone.a" ]; then
+                echo "No file libcapstone.a found, Capstone build failed!"
+                exit 1
+            fi
+
+            make -C libxdc PREFIX=/output/ install
+            if [ ! -f "/output/lib/libxdc.a" ]; then
+                echo "No file libxdc.a found, libxdc build failed!"
+                exit 1
+            fi
+
+            autoreconf -vif libvmi && \
+                libvmi/configure --disable-kvm --disable-file --disable-bareflank \
+                    --disable-vmifs --prefix=/output/ && \
+                make -C libvmi -j$(nproc) && \
+                make -C libvmi install
+            if [ ! -f "/output/lib/libvmi.a" ]; then
+                echo "No file libvmi.a found, libvmi build failed!"
+                exit 1
+            fi
+
+            autoreconf -vif . && \
+                ./configure --prefix=/output/ && \
+                make -j$(nproc) && \
+                make install
+
+            if [ ! -f "/output/bin/kfx" ]; then
+                echo "No file kfx found, KF/x build failed!"
+                exit 1
+            fi
+
+            tar -C /aflplusplus/usr/local -cf /aflplusplus.tar bin lib share && \
+                tar -C /output -xf /aflplusplus.tar
+      - name: Build Deb Packages
+        shell: bash
+        run: |
+            export KFX_VERSION="${KFX_VERSION}-${{env.PACKAGE_SHORT_HASH }}-${{ steps.codename.outputs.codename }}"
+
+            mkdir -p /debs/
+            dpkg-deb -xv /xen-debs/* /xen
+            cp package/resource/xen/etc/default/grub.d/xen.cfg /xen/etc/default/grub.d/xen.cfg
+            cp package/resource/xen/etc/modules-load.d/xen.conf /xen/etc/modules-load.d/xen.conf
+            cp package/resource/xen/usr/bin/kfx-find-xen-defaults /xen/usr/bin/kfx-find-xen-defaults
+            chmod +x /xen/usr/bin/kfx-find-xen-defaults
+            cp package/resource/xen/postinst /xen/DEBIAN/postinst
+            cp package/resource/xen/postrm /xen/DEBIAN/postrm
+            export XENVERSION=$(ls /xen-debs | head -n 1 |awk \
+                    '{ n=split($0,a,"-"); split(a[n],b,"."); print b[1]"."b[2]"."b[3]; }') && \
+                export ARCH=$(dpkg --print-architecture) && \
+                mkdir -p /xen/DEBIAN && \
+                echo "Package: kfx-xen" > /xen/DEBIAN/control && \
+                echo "Source: kfx-xen" >> /xen/DEBIAN/control && \
+                echo "Version: ${XENVERSION}" >> /xen/DEBIAN/control && \
+                echo "Architecture: ${ARCH}" >> /xen/DEBIAN/control && \
+                echo "Maintainer: UNMAINTAINED: KF/x Team <rowan.hart@intel.com>" \
+                    >> /xen/DEBIAN/control && \
+                echo "Section: misc" >> /xen/DEBIAN/control && \
+                echo "Priority: optional" >> /xen/DEBIAN/control && \
+                echo "Description: Xen for KFx" >> /xen/DEBIAN/control && \
+                echo "Depends: libpixman-1-0, libpng16-16, libnettle6 | libnettle7 | libnettle8, "\
+                    "libgnutls30, libfdt1, libyajl2, libaio1, libpulse0, libjpeg8 | libjpeg62-turbo" >> /xen/DEBIAN/control && \
+                echo "Conflicts: xen-hypervisor-4.17-${ARCH}, xen-hypervisor-4.16-${ARCH}, "\
+                    "xen-hypervisor-4.15-${ARCH}, xen-hypervisor-4.14-${ARCH}, "\
+                    "xen-hypervisor-4.13-${ARCH}, xen-hypervisor-4.12-${ARCH}, "\
+                    "xen-hypervisor-4.11-${ARCH}, xen-hypervisor-4.10-${ARCH}, "\
+                    "xen-hypervisor-4.9-${ARCH}" \
+                    >> /xen/DEBIAN/control && \
+                echo "Installed-Size: $(du -ks /xen/ | awk '{print $1}')" \
+                    >> /xen/DEBIAN/control && \
+                find /xen/etc -type f -printf '%P\n' | xargs -i echo '/etc/{}' \
+                    > /xen/DEBIAN/conffiles && \
+                chown -R root:root /xen/ && \
+                dpkg-deb --build -z0 /xen "/debs/kfx-xen_${XENVERSION}-${KFX_VERSION}_${ARCH}.deb"
+
+            # Create KF/x deb
+            cp package/resource/kfx/postinst /kfx/DEBIAN/postinst
+            mkdir -p /kfx/DEBIAN && \
+                mkdir -p /kfx/etc/ld.so.conf.d/ && \
+                echo "/usr/local/lib" >> /kfx/etc/ld.so.conf.d/kfx.conf && \
+                export ARCH=$(dpkg --print-architecture) && \
+                echo "Package: kfx" > /kfx/DEBIAN/control && \
+                echo "Source: kfx" >> /kfx/DEBIAN/control && \
+                echo "Version: ${KFX_VERSION}" >> /kfx/DEBIAN/control && \
+                echo "Architecture: ${ARCH}" >> /kfx/DEBIAN/control && \
+                echo "Maintainer: UNMAINTAINED: KF/x Team <rowan.hart@intel.com>" \
+                    >> /kfx/DEBIAN/control && \
+                echo "Section: misc" >> /kfx/DEBIAN/control && \
+                echo "Priority: optional" >> /kfx/DEBIAN/control && \
+                echo "Description: Kernel Fuzzer for Xen" >> /kfx/DEBIAN/control && \
+                echo "Depends: libfuse2, liblzma5, libpcre3, libunwind8, zlib1g" \
+                    >> /kfx/DEBIAN/control && \
+                echo "Installed-Size: $(du -ks /kfx/ | awk '{print $1}')" \
+                    >> /kfx/DEBIAN/control && \
+                echo "/etc/ld.so.conf.d/kfx.conf" > /kfx/DEBIAN/conffiles && \
+                chown -R root:root /kfx/ && \
+                dpkg-deb --build -z0 /kfx "/debs/kfx_${KFX_VERSION}_${ARCH}.deb"
+
+            cp package/resource/bundle/postinst /xen/DEBIAN/postinst
+            export XENVERSION=$(ls /xen-debs | head -n 1 |awk \
+                    '{ n=split($0,a,"-"); split(a[n],b,"."); print b[1]"."b[2]"."b[3]; }') && \
+                export ARCH=$(dpkg --print-architecture) && \
+                tar -C /kfx/usr/local/ -cf /kfx.tar bin include lib && \
+                tar -C /xen/usr/local/ -xf /kfx.tar && \
+                mkdir -p /xen/DEBIAN && \
+                echo "Package: kfx-bundle" > /xen/DEBIAN/control && \
+                echo "Source: kfx-bundle" >> /xen/DEBIAN/control && \
+                echo "Version: ${XENVERSION}" >> /xen/DEBIAN/control && \
+                echo "Architecture: ${ARCH}" >> /xen/DEBIAN/control && \
+                echo "Maintainer: UNMAINTAINED: KF/x Team <rowan.hart@intel.com>" \
+                    >> /xen/DEBIAN/control && \
+                echo "Section: misc" >> /xen/DEBIAN/control && \
+                echo "Priority: optional" >> /xen/DEBIAN/control && \
+                echo "Description: Xen for KFx" >> /xen/DEBIAN/control && \
+                echo "Depends: libpixman-1-0, libpng16-16, libnettle6 | libnettle7 | libnettle8, "\
+                    "libgnutls30, libfdt1, libyajl2, libaio1, libfuse2, liblzma5, libpcre3, "\
+                echo "Conflicts: xen-hypervisor-4.17-${ARCH}, xen-hypervisor-4.16-${ARCH}, "\
+                    "xen-hypervisor-4.15-${ARCH}, xen-hypervisor-4.14-${ARCH}, "\
+                    "xen-hypervisor-4.13-${ARCH}, xen-hypervisor-4.12-${ARCH}, "\
+                    "xen-hypervisor-4.11-${ARCH}, xen-hypervisor-4.10-${ARCH}, "\
+                    "xen-hypervisor-4.9-${ARCH}" \
+                    >> /xen/DEBIAN/control && \
+                    "libunwind8, zlib1g, libpulse0, libjpeg8 | libjpeg62-turbo, mkisofs" >> /xen/DEBIAN/control && \
+                echo "Installed-Size: $(du -ks /xen/ | awk '{print $1}')" \
+                    >> /xen/DEBIAN/control && \
+                find /xen/etc -type f -printf '%P\n' | xargs -i echo '/etc/{}' \
+                    > /xen/DEBIAN/conffiles && \
+                chown -R root:root /xen/ && \
+                dpkg-deb --build -z0 /xen \
+                    "/debs/kfx-bundle_${XENVERSION}-${KFX_VERSION}_${ARCH}.deb"
 
       - uses: actions/upload-artifact@v3
         with:
