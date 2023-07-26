@@ -117,7 +117,8 @@ RUN make -C xen olddefconfig && \
     make -j$(nproc) dist-xen && \
     make -j$(nproc) dist-tools && \
     make -j$(nproc) install-xen && \
-    make -j$(nproc) install-tools
+    make -j$(nproc) install-tools && \
+    make clean
 
 RUN mkdir -p dist/install/etc/ld.so.conf.d && \
     echo "/usr/local/lib" > dist/install/etc/ld.so.conf.d/xen.conf
@@ -126,7 +127,8 @@ RUN cp tools/misc/xen-vmtrace dist/install/usr/local/sbin
 
 RUN mkdir -p /debs && \
     make -j$(nproc) debball && \
-    cp dist/*.deb /debs
+    cp dist/*.deb /debs && \
+    make clean
 
 RUN if [ $(ls -A "/debs/" | wc -l) -eq 0 ]; then \
     echo "No deb files found in /debs/, Xen build failed!"; \
@@ -202,29 +204,7 @@ FROM deps as kfx-deps
 RUN wget https://go.dev/dl/go1.19.3.linux-amd64.tar.gz && \
     tar -C /usr/local -xzf go1.19.3.linux-amd64.tar.gz
 
-
 ENV PATH "${PATH}:/usr/local/go/bin"
-
-########################################################################################################
-FROM deps as winkfx-deps
-########################################################################################################
-
-# Install rust
-RUN wget -O- https://sh.rustup.rs | sh -s -- -y 
-
-# Install LLVM
-
-RUN apt-get -y update && apt-get -y install \
-        software-properties-common \
-        libpcap-dev && \
-    if grep -q "bionic" /etc/os-release; then \
-        export LLVM_VERSION=13; \
-    else \
-        export LLVM_VERSION=14; \
-    fi && \
-    wget -O /tmp/llvm.sh https://apt.llvm.org/llvm.sh && \
-    chmod +x /tmp/llvm.sh && \
-    /tmp/llvm.sh "${LLVM_VERSION}" all
 
 ########################################################################################################
 FROM kfx-deps as kfx-builder
@@ -251,7 +231,8 @@ COPY dwarf2json /build/dwarf2json
 WORKDIR /build/dwarf2json
 RUN go build -buildvcs=false && \
     mkdir -p /output/bin && \
-    cp dwarf2json /output/bin/
+    cp dwarf2json /output/bin/ && \
+    go clean
 RUN if [ ! -f "/output/bin/dwarf2json" ]; then \
     echo "dwarf2json build failed!"; \
     exit 1; \
@@ -265,7 +246,8 @@ RUN cmake -DCMAKE_INSTALL_PREFIX=/output \
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
         -DCMAKE_BUILD_TYPE=Release /build/capstone/ && \
     make -C /build/capstone/build/ -j$(nproc) && \
-    make install
+    make install && \
+    make clean
 RUN if [ ! -f /output/lib/libcapstone.a ]; then \
         echo "No file libcapstone.a found, Capstone build failed!"; \
         exit 1; \
@@ -274,7 +256,8 @@ RUN if [ ! -f /output/lib/libcapstone.a ]; then \
 # Build libxdc and install to deb prefix and the system
 COPY libxdc /build/libxdc
 WORKDIR /build/libxdc/
-RUN make PREFIX=/output/ install
+RUN make PREFIX=/output/ install && \
+    make clean
 RUN if [ ! -f /output/lib/libxdc.a ]; then \
         echo "No file libxdc.a found, libxdc build failed!"; \
         exit 1; \
@@ -287,7 +270,8 @@ RUN autoreconf -vif && \
     ./configure --disable-kvm --disable-file --disable-bareflank --disable-vmifs \
         --prefix=/output/ && \
     make -j$(nproc) && \
-    make install
+    make install && \
+    make clean
 RUN if [ ! -f /output/lib/libvmi.a ]; then \
         echo "No file libvmi.a found, libvmi build failed!"; \
         exit 1; \
@@ -300,7 +284,8 @@ WORKDIR /build/kfx/
 RUN autoreconf -vif && \
     ./configure --prefix=/output/ && \
     make -j$(nproc) && \
-    make install
+    make install && \
+    make clean
 
 RUN if [ ! -f /output/bin/kfx ]; then \
         echo "No file kfx found, KF/x build failed!"; \
@@ -350,10 +335,11 @@ RUN export XENVERSION=$(ls /xen-debs | head -n 1 |awk \
     echo "Description: Xen for KFx" >> /xen/DEBIAN/control && \
     echo "Depends: libpixman-1-0, libpng16-16, libnettle6 | libnettle7 | libnettle8, "\
         "libgnutls30, libfdt1, libyajl2, libaio1, libpulse0, libjpeg8 | libjpeg62-turbo" >> /xen/DEBIAN/control && \
-    echo "Conflicts: xen-hypervisor-4.16-${ARCH}, xen-hypervisor-4.15-${ARCH}, "\
-        "xen-hypervisor-4.14-${ARCH}, xen-hypervisor-4.13-${ARCH}, "\
-        "xen-hypervisor-4.12-${ARCH}, xen-hypervisor-4.11-${ARCH}, "\
-        "xen-hypervisor-4.10-${ARCH}, xen-hypervisor-4.9-${ARCH}" \
+    echo "Conflicts: xen-hypervisor-4.17-${ARCH}, xen-hypervisor-4.16-${ARCH}, "\
+        "xen-hypervisor-4.15-${ARCH}, xen-hypervisor-4.14-${ARCH}, "\
+        "xen-hypervisor-4.13-${ARCH}, xen-hypervisor-4.12-${ARCH}, "\
+        "xen-hypervisor-4.11-${ARCH}, xen-hypervisor-4.10-${ARCH}, "\
+        "xen-hypervisor-4.9-${ARCH}" \
         >> /xen/DEBIAN/control && \
     echo "Installed-Size: $(du -ks /xen/ | awk '{print $1}')" \
         >> /xen/DEBIAN/control && \
@@ -361,39 +347,6 @@ RUN export XENVERSION=$(ls /xen-debs | head -n 1 |awk \
         > /xen/DEBIAN/conffiles && \
     chown -R root:root /xen/ && \
     dpkg-deb --build -z0 /xen "/debs/kfx-xen_${XENVERSION}-${KFX_VERSION}_${ARCH}.deb"
-
-# Create combined deb
-COPY package/resource/bundle/postinst /xen/DEBIAN/postinst
-RUN export XENVERSION=$(ls /xen-debs | head -n 1 |awk \
-        '{ n=split($0,a,"-"); split(a[n],b,"."); print b[1]"."b[2]"."b[3]; }') && \
-    export ARCH=$(dpkg --print-architecture) && \
-    tar -C /kfx/usr/local/ -cf /kfx.tar bin include lib && \
-    tar -C /xen/usr/local/ -xf /kfx.tar && \
-    mkdir -p /xen/DEBIAN && \
-    echo "Package: kfx-bundle" > /xen/DEBIAN/control && \
-    echo "Source: kfx-bundle" >> /xen/DEBIAN/control && \
-    echo "Version: ${XENVERSION}" >> /xen/DEBIAN/control && \
-    echo "Architecture: ${ARCH}" >> /xen/DEBIAN/control && \
-    echo "Maintainer: UNMAINTAINED: KF/x Team <rowan.hart@intel.com>" \
-        >> /xen/DEBIAN/control && \
-    echo "Section: misc" >> /xen/DEBIAN/control && \
-    echo "Priority: optional" >> /xen/DEBIAN/control && \
-    echo "Description: Xen for KFx" >> /xen/DEBIAN/control && \
-    echo "Depends: libpixman-1-0, libpng16-16, libnettle6 | libnettle7 | libnettle8, "\
-        "libgnutls30, libfdt1, libyajl2, libaio1, libfuse2, liblzma5, libpcre3, "\
-        "libunwind8, zlib1g, libpulse0, libjpeg8 | libjpeg62-turbo, mkisofs" >> /xen/DEBIAN/control && \
-    echo "Conflicts: xen-hypervisor-4.16-${ARCH}, xen-hypervisor-4.15-${ARCH}, "\
-        "xen-hypervisor-4.14-${ARCH}, xen-hypervisor-4.13-${ARCH}, "\
-        "xen-hypervisor-4.12-${ARCH}, xen-hypervisor-4.11-${ARCH}, "\
-        "xen-hypervisor-4.10-${ARCH}, xen-hypervisor-4.9-${ARCH}" \
-        >> /xen/DEBIAN/control && \
-    echo "Installed-Size: $(du -ks /xen/ | awk '{print $1}')" \
-        >> /xen/DEBIAN/control && \
-    find /xen/etc -type f -printf '%P\n' | xargs -i echo '/etc/{}' \
-        > /xen/DEBIAN/conffiles && \
-    chown -R root:root /xen/ && \
-    dpkg-deb --build -z0 /xen \
-        "/debs/kfx-bundle_${XENVERSION}-${KFX_VERSION}_${ARCH}.deb"
 
 # Create KF/x deb
 COPY package/resource/kfx/postinst /kfx/DEBIAN/postinst
@@ -417,3 +370,37 @@ RUN mkdir -p /kfx/DEBIAN && \
     echo "/etc/ld.so.conf.d/kfx.conf" > /kfx/DEBIAN/conffiles && \
     chown -R root:root /kfx/ && \
     dpkg-deb --build -z0 /kfx "/debs/kfx_${KFX_VERSION}_${ARCH}.deb"
+
+# Create combined deb
+COPY package/resource/bundle/postinst /xen/DEBIAN/postinst
+RUN export XENVERSION=$(ls /xen-debs | head -n 1 |awk \
+        '{ n=split($0,a,"-"); split(a[n],b,"."); print b[1]"."b[2]"."b[3]; }') && \
+    export ARCH=$(dpkg --print-architecture) && \
+    tar -C /kfx/usr/local/ -cf /kfx.tar bin include lib && \
+    tar -C /xen/usr/local/ -xf /kfx.tar && \
+    mkdir -p /xen/DEBIAN && \
+    echo "Package: kfx-bundle" > /xen/DEBIAN/control && \
+    echo "Source: kfx-bundle" >> /xen/DEBIAN/control && \
+    echo "Version: ${XENVERSION}" >> /xen/DEBIAN/control && \
+    echo "Architecture: ${ARCH}" >> /xen/DEBIAN/control && \
+    echo "Maintainer: UNMAINTAINED: KF/x Team <rowan.hart@intel.com>" \
+        >> /xen/DEBIAN/control && \
+    echo "Section: misc" >> /xen/DEBIAN/control && \
+    echo "Priority: optional" >> /xen/DEBIAN/control && \
+    echo "Description: Xen for KFx" >> /xen/DEBIAN/control && \
+    echo "Depends: libpixman-1-0, libpng16-16, libnettle6 | libnettle7 | libnettle8, "\
+        "libgnutls30, libfdt1, libyajl2, libaio1, libfuse2, liblzma5, libpcre3, "\
+    echo "Conflicts: xen-hypervisor-4.17-${ARCH}, xen-hypervisor-4.16-${ARCH}, "\
+        "xen-hypervisor-4.15-${ARCH}, xen-hypervisor-4.14-${ARCH}, "\
+        "xen-hypervisor-4.13-${ARCH}, xen-hypervisor-4.12-${ARCH}, "\
+        "xen-hypervisor-4.11-${ARCH}, xen-hypervisor-4.10-${ARCH}, "\
+        "xen-hypervisor-4.9-${ARCH}" \
+        >> /xen/DEBIAN/control && \
+        "libunwind8, zlib1g, libpulse0, libjpeg8 | libjpeg62-turbo, mkisofs" >> /xen/DEBIAN/control && \
+    echo "Installed-Size: $(du -ks /xen/ | awk '{print $1}')" \
+        >> /xen/DEBIAN/control && \
+    find /xen/etc -type f -printf '%P\n' | xargs -i echo '/etc/{}' \
+        > /xen/DEBIAN/conffiles && \
+    chown -R root:root /xen/ && \
+    dpkg-deb --build -z0 /xen \
+        "/debs/kfx-bundle_${XENVERSION}-${KFX_VERSION}_${ARCH}.deb"
