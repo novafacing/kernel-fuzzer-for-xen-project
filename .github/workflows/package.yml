@@ -147,8 +147,8 @@ jobs:
                 make -C xen olddefconfig && \
                 make -j$(nproc) dist-xen && \
                 make -j$(nproc) dist-tools && \
-                make -j$(nproc) install-xen && \
-                make -j$(nproc) install-tools
+                sudo make -j$(nproc) install-xen && \
+                sudo make -j$(nproc) install-tools
             mkdir -p dist/install/etc/ld.so.conf.d/ && \
                 echo "/usr/local/lib" > dist/install/etc/ld.so.conf.d/xen.conf
             cp tools/misc/xen-vmtrace dist/install/usr/local/sbin
