@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Compute Short Commit Hash
         id: short-hash
@@ -41,6 +41,8 @@ jobs:
           export http_proxy="${{ env.PACKAGE_HTTP_PROXY }}"
           export https_proxy="${{ env.PACKAGE_HTTPS_PROXY }}"
           export no_proxy="${{ env.PACKAGE_NO_PROXY }}"
+
+          git submodule update --init --recursive
 
           package/scripts/build.sh ${{ matrix.image }} 0.0.1-git-${{ env.PACKAGE_SHORT_HASH }}-${{ steps.codename.outputs.codename }} /debs
 
