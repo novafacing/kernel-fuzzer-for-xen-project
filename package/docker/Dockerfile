@@ -312,43 +312,6 @@ COPY --from=aflplusplus-builder /aflplusplus /build/aflplusplus/
 RUN tar -C /build/aflplusplus/usr/local/ -cf /aflplusplus.tar bin lib share && \
     tar -C /output -xf /aflplusplus.tar
 
-########################################################################################################
-FROM winkfx-deps as winkfx-builder
-########################################################################################################
-
-COPY --from=kfx-builder /output /output
-COPY --from=xen-builder /debs/ /debs/
-RUN dpkg-deb -xv /debs/* /xen
-
-RUN mkdir -p /output/ && \
-    echo "/output/lib/" > /etc/ld.so.conf.d/build.conf && \
-    echo "/xen/usr/local/lib/" >> /etc/ld.so.conf.d/build.conf && \
-    ldconfig
-
-# Settings for dynamic loader
-ENV LD_LIBRARY_PATH="/xen/usr/local/lib:/output/lib/"
-# Settings for GCC/clang search paths
-ENV LIBRARY_PATH="/xen/usr/local/lib:/output/lib/"
-ENV C_INCLUDE_PATH="/xen/usr/local/include:/output/include/"
-ENV CPLUS_INCLUDE_PATH="/xen/usr/local/include:/output/include/"
-ENV PKG_CONFIG_PATH="/xen/usr/local/lib/pkgconfig/:/output/lib/pkgconfig/"
-
-# Build Win-KF/x Tools and install to deb prefix
-COPY windows/winkfx-tools /build/winkfx-tools
-WORKDIR /build/winkfx-tools
-# Download dependencies
-RUN export PATH="/root/.cargo/bin/:${PATH}" && \
-    cargo fetch
-# Compile
-RUN export PATH="/root/.cargo/bin/:${PATH}" && \
-    export LLVM_CONFIG_PATH=$(which llvm-config-14) && \
-    cargo install --path . --bins --root /output/ --force --profile release
-
-RUN if [ ! -f /output/bin/mk-win-dev ]; then \
-        echo "No file mk-win-dev in /output/bin:"; \
-        ls /output/bin; \
-        exit 1; \
-    fi
 
 ########################################################################################################
 FROM deps AS deb-builder
@@ -359,7 +322,6 @@ ENV KFX_VERSION ${KFX_VERSION}
 
 COPY --from=xen-builder /debs /xen-debs
 COPY --from=kfx-builder /output /kfx/usr/local/
-COPY --from=winkfx-builder /output /winkfx/usr/local/
 
 RUN mkdir -p /debs/
 
@@ -433,39 +395,6 @@ RUN export XENVERSION=$(ls /xen-debs | head -n 1 |awk \
     dpkg-deb --build -z0 /xen \
         "/debs/kfx-bundle_${XENVERSION}-${KFX_VERSION}_${ARCH}.deb"
 
-# Create combined deb with Windows tools
-COPY package/resource/bundle/postinst /xen/DEBIAN/postinst
-RUN export XENVERSION=$(ls /xen-debs | head -n 1 |awk \
-        '{ n=split($0,a,"-"); split(a[n],b,"."); print b[1]"."b[2]"."b[3]; }') && \
-    export ARCH=$(dpkg --print-architecture) && \
-    tar -C /winkfx/usr/local/ -cf /winkfx.tar bin include lib && \
-    tar -C /xen/usr/local/ -xf /winkfx.tar && \
-    mkdir -p /xen/DEBIAN && \
-    echo "Package: winkfx-bundle" > /xen/DEBIAN/control && \
-    echo "Source: winkfx-bundle" >> /xen/DEBIAN/control && \
-    echo "Version: ${XENVERSION}" >> /xen/DEBIAN/control && \
-    echo "Architecture: ${ARCH}" >> /xen/DEBIAN/control && \
-    echo "Maintainer: UNMAINTAINED: KF/x Team <rowan.hart@intel.com>" \
-        >> /xen/DEBIAN/control && \
-    echo "Section: misc" >> /xen/DEBIAN/control && \
-    echo "Priority: optional" >> /xen/DEBIAN/control && \
-    echo "Description: Xen for Win-KFx" >> /xen/DEBIAN/control && \
-    echo "Depends: libpixman-1-0, libpng16-16, libnettle6 | libnettle7 | libnettle8, "\
-        "libgnutls30, libfdt1, libyajl2, libaio1, libfuse2, liblzma5, libpcre3, "\
-        "libunwind8, zlib1g, libpulse0, libjpeg8 | libjpeg62-turbo, mkisofs" >> /xen/DEBIAN/control && \
-    echo "Conflicts: xen-hypervisor-4.16-${ARCH}, xen-hypervisor-4.15-${ARCH}, "\
-        "xen-hypervisor-4.14-${ARCH}, xen-hypervisor-4.13-${ARCH}, "\
-        "xen-hypervisor-4.12-${ARCH}, xen-hypervisor-4.11-${ARCH}, "\
-        "xen-hypervisor-4.10-${ARCH}, xen-hypervisor-4.9-${ARCH}" \
-        >> /xen/DEBIAN/control && \
-    echo "Installed-Size: $(du -ks /xen/ | awk '{print $1}')" \
-        >> /xen/DEBIAN/control && \
-    find /xen/etc -type f -printf '%P\n' | xargs -i echo '/etc/{}' \
-        > /xen/DEBIAN/conffiles && \
-    chown -R root:root /xen/ && \
-    dpkg-deb --build -z0 /xen \
-        "/debs/winkfx-bundle_${XENVERSION}-${KFX_VERSION}_${ARCH}.deb"
-
 # Create KF/x deb
 COPY package/resource/kfx/postinst /kfx/DEBIAN/postinst
 RUN mkdir -p /kfx/DEBIAN && \
@@ -488,26 +417,3 @@ RUN mkdir -p /kfx/DEBIAN && \
     echo "/etc/ld.so.conf.d/kfx.conf" > /kfx/DEBIAN/conffiles && \
     chown -R root:root /kfx/ && \
     dpkg-deb --build -z0 /kfx "/debs/kfx_${KFX_VERSION}_${ARCH}.deb"
-
-# Create Win-KF/x deb
-COPY package/resource/kfx/postinst /kfx/DEBIAN/postinst
-RUN mkdir -p /winkfx/DEBIAN && \
-    mkdir -p /winkfx/etc/ld.so.conf.d/ && \
-    echo "/usr/local/lib" >> /winkfx/etc/ld.so.conf.d/winkfx.conf && \
-    export ARCH=$(dpkg --print-architecture) && \
-    echo "Package: winkfx" > /winkfx/DEBIAN/control && \
-    echo "Source: winkfx" >> /winkfx/DEBIAN/control && \
-    echo "Version: ${KFX_VERSION}" >> /winkfx/DEBIAN/control && \
-    echo "Architecture: ${ARCH}" >> /winkfx/DEBIAN/control && \
-    echo "Maintainer: UNMAINTAINED: KF/x Team <rowan.hart@intel.com>" \
-        >> /winkfx/DEBIAN/control && \
-    echo "Section: misc" >> /winkfx/DEBIAN/control && \
-    echo "Priority: optional" >> /winkfx/DEBIAN/control && \
-    echo "Description: Kernel Fuzzer for Xen" >> /winkfx/DEBIAN/control && \
-    echo "Depends: libfuse2, liblzma5, libpcre3, libunwind8, zlib1g, mkisofs" \
-        >> /winkfx/DEBIAN/control && \
-    echo "Installed-Size: $(du -ks /winkfx/ | awk '{print $1}')" \
-        >> /winkfx/DEBIAN/control && \
-    echo "/etc/ld.so.conf.d/winkfx.conf" > /winkfx/DEBIAN/conffiles && \
-    chown -R root:root /winkfx/ && \
-    dpkg-deb --build -z0 /winkfx "/debs/winkfx_${KFX_VERSION}_${ARCH}.deb"
