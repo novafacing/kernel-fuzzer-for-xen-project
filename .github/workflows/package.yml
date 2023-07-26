@@ -57,7 +57,7 @@ jobs:
               gettext \
               git \
               gnupg \
-              gnuplog-nox \
+              gnupglog-nox \
               iasl \
               iproute2 \
               kpartx \
