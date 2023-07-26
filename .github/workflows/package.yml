@@ -1,0 +1,52 @@
+name: Package
+on: [push]
+jobs:
+  package:
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        image:
+          - 'ubuntu:jammy'
+          - 'ubuntu:focal'
+          - 'ubuntu:bionic'
+          - 'debian:bullseye'
+          - 'debian:buster'
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+
+      - name: Compute Short Commit Hash
+        id: short-hash
+        run: |
+          echo "PACKAGE_SHORT_HASH=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Output Image Codename
+        id: codename
+        run: |
+          echo "codename=$(echo ${{ matrix.image }} | awk -F':' '{print $2}' | head -n 1)" >> $GITHUB_OUTPUT
+      
+      - name: Build Package
+        # Note: The environment variables here are prefixed with PACKAGE_ because the
+        # upload-artifact step will use a set env.HTTP_PROXY variable, and will not work, so we
+        # can't set that variable for the act runner, only for this step.
+        run: |
+          echo "HTTP_PROXY=${{ env.PACKAGE_HTTP_PROXY }}"
+          echo "HTTPS_PROXY=${{ env.PACKAGE_HTTPS_PROXY }}"
+          echo "NO_PROXY=${{ env.PACKAGE_NO_PROXY }}"
+
+          export HTTP_PROXY="${{ env.PACKAGE_HTTP_PROXY }}"
+          export HTTPS_PROXY="${{ env.PACKAGE_HTTPS_PROXY }}"
+          export NO_PROXY="${{ env.PACKAGE_NO_PROXY }}"
+          export http_proxy="${{ env.PACKAGE_HTTP_PROXY }}"
+          export https_proxy="${{ env.PACKAGE_HTTPS_PROXY }}"
+          export no_proxy="${{ env.PACKAGE_NO_PROXY }}"
+
+          package/scripts/build.sh ${{ matrix.image }} 0.0.1-git-${{ env.PACKAGE_SHORT_HASH }}-${{ steps.codename.outputs.codename }} /debs
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: debs-${{ steps.codename.outputs.codename }}
+          path: '/debs/'
+
+
