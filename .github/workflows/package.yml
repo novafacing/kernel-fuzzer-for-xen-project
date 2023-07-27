@@ -153,7 +153,7 @@ jobs:
                 echo "/usr/local/lib" > dist/install/etc/ld.so.conf.d/xen.conf && \
                 cp tools/misc/xen-vmtrace dist/install/usr/local/sbin && \
                 sudo mkdir -p /xen-debs/ && \
-                  make -j$(nproc) debball && \
+                  sudo make -j$(nproc) debball && \
                   sudo mv dist/*.deb /xen-debs/ &&  \
                   popd
             if [ $(ls -A "/xen-debs/" | wc -l) -eq 0 ]; then \
