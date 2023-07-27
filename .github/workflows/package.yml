@@ -180,7 +180,7 @@ jobs:
             export CPLUS_INCLUDE_PATH="/xen/usr/local/include:/output/include/"
             export PKG_CONFIG_PATH="/xen/usr/local/lib/pkgconfig/:/output/lib/pkgconfig/"
 
-            dpkg-deb -xv /xen-debs/* /xen
+            sudo dpkg-deb -xv /xen-debs/* /xen
             sudo mkdir -p /output/ && \
                 echo "/output/lib/" | sudo tee /etc/ld.so.conf.d/build.conf && \
                 echo "/xen/usr/local/lib/" | sudo tee -a /etc/ld.so.conf.d/build.conf && \
@@ -252,69 +252,69 @@ jobs:
                     '{ n=split($0,a,"-"); split(a[n],b,"."); print b[1]"."b[2]"."b[3]; }') && \
                 export ARCH=$(dpkg --print-architecture) && \
                 sudo mkdir -p /xen/DEBIAN && \
-                echo "Package: kfx-xen" > /xen/DEBIAN/control && \
-                echo "Source: kfx-xen" >> /xen/DEBIAN/control && \
-                echo "Version: ${XENVERSION}" >> /xen/DEBIAN/control && \
-                echo "Architecture: ${ARCH}" >> /xen/DEBIAN/control && \
+                echo "Package: kfx-xen" | sudo tee /xen/DEBIAN/control && \
+                echo "Source: kfx-xen" | sudo tee -a /xen/DEBIAN/control && \
+                echo "Version: ${XENVERSION}" | sudo tee -a /xen/DEBIAN/control && \
+                echo "Architecture: ${ARCH}" | sudo tee -a /xen/DEBIAN/control && \
                 echo "Maintainer: UNMAINTAINED: KF/x Team <rowan.hart@intel.com>" \
-                    >> /xen/DEBIAN/control && \
-                echo "Section: misc" >> /xen/DEBIAN/control && \
-                echo "Priority: optional" >> /xen/DEBIAN/control && \
-                echo "Description: Xen for KFx" >> /xen/DEBIAN/control && \
+                    | sudo tee -a /xen/DEBIAN/control && \
+                echo "Section: misc" | sudo tee -a /xen/DEBIAN/control && \
+                echo "Priority: optional" | sudo tee -a /xen/DEBIAN/control && \
+                echo "Description: Xen for KFx" | sudo tee -a /xen/DEBIAN/control && \
                 echo "Depends: libpixman-1-0, libpng16-16, libnettle6 | libnettle7 | libnettle8, "\
-                    "libgnutls30, libfdt1, libyajl2, libaio1, libpulse0, libjpeg8 | libjpeg62-turbo" >> /xen/DEBIAN/control && \
+                    "libgnutls30, libfdt1, libyajl2, libaio1, libpulse0, libjpeg8 | libjpeg62-turbo" | sudo tee -a /xen/DEBIAN/control && \
                 echo "Conflicts: xen-hypervisor-4.17-${ARCH}, xen-hypervisor-4.16-${ARCH}, "\
                     "xen-hypervisor-4.15-${ARCH}, xen-hypervisor-4.14-${ARCH}, "\
                     "xen-hypervisor-4.13-${ARCH}, xen-hypervisor-4.12-${ARCH}, "\
                     "xen-hypervisor-4.11-${ARCH}, xen-hypervisor-4.10-${ARCH}, "\
                     "xen-hypervisor-4.9-${ARCH}" \
-                    >> /xen/DEBIAN/control && \
+                    | sudo tee -a /xen/DEBIAN/control && \
                 echo "Installed-Size: $(du -ks /xen/ | awk '{print $1}')" \
-                    >> /xen/DEBIAN/control && \
+                    | sudo tee -a /xen/DEBIAN/control && \
                 find /xen/etc -type f -printf '%P\n' | xargs -i echo '/etc/{}' \
-                    > /xen/DEBIAN/conffiles && \
+                    | sudo tee /xen/DEBIAN/conffiles && \
                 sudo chown -R root:root /xen/ && \
                 sudo dpkg-deb --build -z0 /xen "/debs/kfx-xen_${XENVERSION}-${KFX_VERSION}_${ARCH}.deb"
 
             # Create KF/x deb
-            cp package/resource/kfx/postinst /kfx/DEBIAN/postinst
+            sudo cp package/resource/kfx/postinst /kfx/DEBIAN/postinst
             sudo mkdir -p /kfx/DEBIAN && \
                 sudo mkdir -p /kfx/etc/ld.so.conf.d/ && \
-                echo "/usr/local/lib" >> /kfx/etc/ld.so.conf.d/kfx.conf && \
+                echo "/usr/local/lib" | sudo tee -a /kfx/etc/ld.so.conf.d/kfx.conf && \
                 export ARCH=$(dpkg --print-architecture) && \
-                echo "Package: kfx" > /kfx/DEBIAN/control && \
-                echo "Source: kfx" >> /kfx/DEBIAN/control && \
-                echo "Version: ${KFX_VERSION}" >> /kfx/DEBIAN/control && \
-                echo "Architecture: ${ARCH}" >> /kfx/DEBIAN/control && \
+                echo "Package: kfx" | sudo tee -a /kfx/DEBIAN/control && \
+                echo "Source: kfx" | sudo tee -a /kfx/DEBIAN/control && \
+                echo "Version: ${KFX_VERSION}" | sudo tee -a /kfx/DEBIAN/control && \
+                echo "Architecture: ${ARCH}" | sudo tee -a /kfx/DEBIAN/control && \
                 echo "Maintainer: UNMAINTAINED: KF/x Team <rowan.hart@intel.com>" \
-                    >> /kfx/DEBIAN/control && \
-                echo "Section: misc" >> /kfx/DEBIAN/control && \
-                echo "Priority: optional" >> /kfx/DEBIAN/control && \
-                echo "Description: Kernel Fuzzer for Xen" >> /kfx/DEBIAN/control && \
+                    | sudo tee -a /kfx/DEBIAN/control && \
+                echo "Section: misc" | sudo tee -a /kfx/DEBIAN/control && \
+                echo "Priority: optional" | sudo tee -a /kfx/DEBIAN/control && \
+                echo "Description: Kernel Fuzzer for Xen" | sudo tee -a /kfx/DEBIAN/control && \
                 echo "Depends: libfuse2, liblzma5, libpcre3, libunwind8, zlib1g" \
-                    >> /kfx/DEBIAN/control && \
+                    | sudo tee -a /kfx/DEBIAN/control && \
                 echo "Installed-Size: $(du -ks /kfx/ | awk '{print $1}')" \
-                    >> /kfx/DEBIAN/control && \
+                    | sudo tee -a /kfx/DEBIAN/control && \
                 echo "/etc/ld.so.conf.d/kfx.conf" > /kfx/DEBIAN/conffiles && \
                 sudo chown -R root:root /kfx/ && \
                 sudo dpkg-deb --build -z0 /kfx "/debs/kfx_${KFX_VERSION}_${ARCH}.deb"
 
-            cp package/resource/bundle/postinst /xen/DEBIAN/postinst
+            sudo cp package/resource/bundle/postinst /xen/DEBIAN/postinst
             export XENVERSION=$(ls /xen-debs | head -n 1 |awk \
                     '{ n=split($0,a,"-"); split(a[n],b,"."); print b[1]"."b[2]"."b[3]; }') && \
                 export ARCH=$(dpkg --print-architecture) && \
-                tar -C /kfx/usr/local/ -cf /kfx.tar bin include lib && \
-                tar -C /xen/usr/local/ -xf /kfx.tar && \
+                sudo tar -C /kfx/usr/local/ -cf /kfx.tar bin include lib && \
+                sudo tar -C /xen/usr/local/ -xf /kfx.tar && \
                 sudo mkdir -p /xen/DEBIAN && \
-                echo "Package: kfx-bundle" > /xen/DEBIAN/control && \
-                echo "Source: kfx-bundle" >> /xen/DEBIAN/control && \
-                echo "Version: ${XENVERSION}" >> /xen/DEBIAN/control && \
-                echo "Architecture: ${ARCH}" >> /xen/DEBIAN/control && \
+                echo "Package: kfx-bundle" | sudo tee -a /xen/DEBIAN/control && \
+                echo "Source: kfx-bundle" | sudo tee -a /xen/DEBIAN/control && \
+                echo "Version: ${XENVERSION}" | sudo tee -a /xen/DEBIAN/control && \
+                echo "Architecture: ${ARCH}" | sudo tee -a /xen/DEBIAN/control && \
                 echo "Maintainer: UNMAINTAINED: KF/x Team <rowan.hart@intel.com>" \
-                    >> /xen/DEBIAN/control && \
-                echo "Section: misc" >> /xen/DEBIAN/control && \
-                echo "Priority: optional" >> /xen/DEBIAN/control && \
-                echo "Description: Xen for KFx" >> /xen/DEBIAN/control && \
+                    | sudo tee -a /xen/DEBIAN/control && \
+                echo "Section: misc" | sudo tee -a /xen/DEBIAN/control && \
+                echo "Priority: optional" | sudo tee -a /xen/DEBIAN/control && \
+                echo "Description: Xen for KFx" | sudo tee -a /xen/DEBIAN/control && \
                 echo "Depends: libpixman-1-0, libpng16-16, libnettle6 | libnettle7 | libnettle8, "\
                     "libgnutls30, libfdt1, libyajl2, libaio1, libfuse2, liblzma5, libpcre3, "\
                 echo "Conflicts: xen-hypervisor-4.17-${ARCH}, xen-hypervisor-4.16-${ARCH}, "\
@@ -322,12 +322,12 @@ jobs:
                     "xen-hypervisor-4.13-${ARCH}, xen-hypervisor-4.12-${ARCH}, "\
                     "xen-hypervisor-4.11-${ARCH}, xen-hypervisor-4.10-${ARCH}, "\
                     "xen-hypervisor-4.9-${ARCH}" \
-                    >> /xen/DEBIAN/control && \
-                    "libunwind8, zlib1g, libpulse0, libjpeg8 | libjpeg62-turbo, mkisofs" >> /xen/DEBIAN/control && \
+                    | sudo tee -a /xen/DEBIAN/control && \
+                    "libunwind8, zlib1g, libpulse0, libjpeg8 | libjpeg62-turbo, mkisofs" | sudo tee -a /xen/DEBIAN/control && \
                 echo "Installed-Size: $(du -ks /xen/ | awk '{print $1}')" \
-                    >> /xen/DEBIAN/control && \
+                    | sudo tee -a /xen/DEBIAN/control && \
                 find /xen/etc -type f -printf '%P\n' | xargs -i echo '/etc/{}' \
-                    > /xen/DEBIAN/conffiles && \
+                    | sudo tee /xen/DEBIAN/conffiles && \
                 sudo chown -R root:root /xen/ && \
                 sudo dpkg-deb --build -z0 /xen \
                     "/debs/kfx-bundle_${XENVERSION}-${KFX_VERSION}_${ARCH}.deb"
