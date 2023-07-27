@@ -151,7 +151,7 @@ jobs:
                 sudo make -j$(nproc) install-tools && \
                 mkdir -p dist/install/etc/ld.so.conf.d/ && \
                 echo "/usr/local/lib" > dist/install/etc/ld.so.conf.d/xen.conf && \
-                cp xen/tools/misc/xen-vmtrace dist/install/usr/local/sbin && \
+                cp tools/misc/xen-vmtrace dist/install/usr/local/sbin && \
                 mkdir -p /xen-debs/ && \
                   make -j$(nproc) debball && \
                   mv dist/*.deb /xen-debs/ &&  \
