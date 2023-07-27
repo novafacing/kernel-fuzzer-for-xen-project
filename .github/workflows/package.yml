@@ -188,7 +188,7 @@ jobs:
 
             /usr/local/go/bin/go build -C dwarf2json -buildvcs=false && \
                 sudo mkdir -p /output/bin && \
-                sudo cp dwarf2json /output/bin/
+                sudo cp dwarf2json/dwarf2json /output/bin/
             if [ ! -f "/output/bin/dwarf2json" ]; then
                 echo "dwarf2json build failed!"
                 exit 1
