@@ -169,7 +169,7 @@ jobs:
             # git -C /aflplusplus-git checkout 8cdc48f73a17ddd557897f2098937a8ba3bfe184 && \
             sudo git -C /aflplusplus-git fetch --all && \
                 sudo mkdir -p /aflplusplus && \
-                sudo make -C /afplusplus-git source-only && \
+                sudo make -C /aflplusplus-git source-only && \
                 sudo make -C /aflplusplus-git DESTDIR=/aflplusplus install
       - name: Build KF/x
         shell: bash
