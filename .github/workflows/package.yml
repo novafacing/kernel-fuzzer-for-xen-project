@@ -152,9 +152,9 @@ jobs:
                 mkdir -p dist/install/etc/ld.so.conf.d/ && \
                 echo "/usr/local/lib" > dist/install/etc/ld.so.conf.d/xen.conf && \
                 cp tools/misc/xen-vmtrace dist/install/usr/local/sbin && \
-                mkdir -p /xen-debs/ && \
+                sudo mkdir -p /xen-debs/ && \
                   make -j$(nproc) debball && \
-                  mv dist/*.deb /xen-debs/ &&  \
+                  sudo mv dist/*.deb /xen-debs/ &&  \
                   popd
             if [ $(ls -A "/xen-debs/" | wc -l) -eq 0 ]; then \
                 echo "No deb files found in /xen-debs/, Xen build failed!"; \
@@ -168,9 +168,9 @@ jobs:
                 
             git -C /aflplusplus-git fetch --all && \
                 git -C /aflplusplus-git checkout 8cdc48f73a17ddd557897f2098937a8ba3bfe184 && \
-                mkdir -p /aflplusplus && \
+                sudo mkdir -p /aflplusplus && \
                 make -C /afplusplus-git source-only && \
-                make -C /aflplusplus-git DESTDIR=/aflplusplus install
+                sudo make -C /aflplusplus-git DESTDIR=/aflplusplus install
       - name: Build KF/x
         shell: bash
         run: |
@@ -181,14 +181,14 @@ jobs:
             export PKG_CONFIG_PATH="/xen/usr/local/lib/pkgconfig/:/output/lib/pkgconfig/"
 
             dpkg-deb -xv /xen-debs/* /xen
-            mkdir -p /output/ && \
-                echo "/output/lib/" > /etc/ld.so.conf.d/build.conf && \
-                echo "/xen/usr/local/lib/" >> /etc/ld.so.conf.d/build.conf && \
+            sudo mkdir -p /output/ && \
+                echo "/output/lib/" | sudo tee /etc/ld.so.conf.d/build.conf && \
+                echo "/xen/usr/local/lib/" | sudo tee -a /etc/ld.so.conf.d/build.conf && \
                 ldconfig
 
             /usr/local/go/bin/go build -C dwarf2json -buildvcs=false && \
-                mkdir -p /output/bin && \
-                cp dwarf2json /output/bin/
+                sudo mkdir -p /output/bin && \
+                sudo cp dwarf2json /output/bin/
             if [ ! -f "/output/bin/dwarf2json" ]; then
                 echo "dwarf2json build failed!"
                 exit 1
@@ -199,13 +199,13 @@ jobs:
                     -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_BUILD_TYPE=Release \
                     -S capstone -B capstone/build/ && \
                 make -C capstone/build/ -j$(nproc) && \
-                make -C capstone/build install
+                sudo make -C capstone/build install
             if [ ! -f "/output/lib/libcapstone.a" ]; then
                 echo "No file libcapstone.a found, Capstone build failed!"
                 exit 1
             fi
 
-            make -C libxdc PREFIX=/output/ install
+            sudo make -C libxdc PREFIX=/output/ install
             if [ ! -f "/output/lib/libxdc.a" ]; then
                 echo "No file libxdc.a found, libxdc build failed!"
                 exit 1
@@ -233,25 +233,25 @@ jobs:
                 exit 1
             fi
 
-            tar -C /aflplusplus/usr/local -cf /aflplusplus.tar bin lib share && \
-                tar -C /output -xf /aflplusplus.tar
+            sudo tar -C /aflplusplus/usr/local -cf /aflplusplus.tar bin lib share && \
+                sudo tar -C /output -xf /aflplusplus.tar
       - name: Build Deb Packages
         shell: bash
         run: |
             export KFX_VERSION="${KFX_VERSION}-${{env.PACKAGE_SHORT_HASH }}-${{ steps.codename.outputs.codename }}"
 
-            mkdir -p /debs/
-            dpkg-deb -xv /xen-debs/* /xen
-            cp package/resource/xen/etc/default/grub.d/xen.cfg /xen/etc/default/grub.d/xen.cfg
-            cp package/resource/xen/etc/modules-load.d/xen.conf /xen/etc/modules-load.d/xen.conf
-            cp package/resource/xen/usr/bin/kfx-find-xen-defaults /xen/usr/bin/kfx-find-xen-defaults
-            chmod +x /xen/usr/bin/kfx-find-xen-defaults
-            cp package/resource/xen/postinst /xen/DEBIAN/postinst
-            cp package/resource/xen/postrm /xen/DEBIAN/postrm
+            sudo mkdir -p /debs/
+            sudo dpkg-deb -xv /xen-debs/* /xen
+            sudo cp package/resource/xen/etc/default/grub.d/xen.cfg /xen/etc/default/grub.d/xen.cfg
+            sudo cp package/resource/xen/etc/modules-load.d/xen.conf /xen/etc/modules-load.d/xen.conf
+            sudo cp package/resource/xen/usr/bin/kfx-find-xen-defaults /xen/usr/bin/kfx-find-xen-defaults
+            sudo chmod +x /xen/usr/bin/kfx-find-xen-defaults
+            sudo cp package/resource/xen/postinst /xen/DEBIAN/postinst
+            sudo cp package/resource/xen/postrm /xen/DEBIAN/postrm
             export XENVERSION=$(ls /xen-debs | head -n 1 |awk \
                     '{ n=split($0,a,"-"); split(a[n],b,"."); print b[1]"."b[2]"."b[3]; }') && \
                 export ARCH=$(dpkg --print-architecture) && \
-                mkdir -p /xen/DEBIAN && \
+                sudo mkdir -p /xen/DEBIAN && \
                 echo "Package: kfx-xen" > /xen/DEBIAN/control && \
                 echo "Source: kfx-xen" >> /xen/DEBIAN/control && \
                 echo "Version: ${XENVERSION}" >> /xen/DEBIAN/control && \
@@ -273,13 +273,13 @@ jobs:
                     >> /xen/DEBIAN/control && \
                 find /xen/etc -type f -printf '%P\n' | xargs -i echo '/etc/{}' \
                     > /xen/DEBIAN/conffiles && \
-                chown -R root:root /xen/ && \
-                dpkg-deb --build -z0 /xen "/debs/kfx-xen_${XENVERSION}-${KFX_VERSION}_${ARCH}.deb"
+                sudo chown -R root:root /xen/ && \
+                sudo dpkg-deb --build -z0 /xen "/debs/kfx-xen_${XENVERSION}-${KFX_VERSION}_${ARCH}.deb"
 
             # Create KF/x deb
             cp package/resource/kfx/postinst /kfx/DEBIAN/postinst
-            mkdir -p /kfx/DEBIAN && \
-                mkdir -p /kfx/etc/ld.so.conf.d/ && \
+            sudo mkdir -p /kfx/DEBIAN && \
+                sudo mkdir -p /kfx/etc/ld.so.conf.d/ && \
                 echo "/usr/local/lib" >> /kfx/etc/ld.so.conf.d/kfx.conf && \
                 export ARCH=$(dpkg --print-architecture) && \
                 echo "Package: kfx" > /kfx/DEBIAN/control && \
@@ -296,8 +296,8 @@ jobs:
                 echo "Installed-Size: $(du -ks /kfx/ | awk '{print $1}')" \
                     >> /kfx/DEBIAN/control && \
                 echo "/etc/ld.so.conf.d/kfx.conf" > /kfx/DEBIAN/conffiles && \
-                chown -R root:root /kfx/ && \
-                dpkg-deb --build -z0 /kfx "/debs/kfx_${KFX_VERSION}_${ARCH}.deb"
+                sudo chown -R root:root /kfx/ && \
+                sudo dpkg-deb --build -z0 /kfx "/debs/kfx_${KFX_VERSION}_${ARCH}.deb"
 
             cp package/resource/bundle/postinst /xen/DEBIAN/postinst
             export XENVERSION=$(ls /xen-debs | head -n 1 |awk \
@@ -305,7 +305,7 @@ jobs:
                 export ARCH=$(dpkg --print-architecture) && \
                 tar -C /kfx/usr/local/ -cf /kfx.tar bin include lib && \
                 tar -C /xen/usr/local/ -xf /kfx.tar && \
-                mkdir -p /xen/DEBIAN && \
+                sudo mkdir -p /xen/DEBIAN && \
                 echo "Package: kfx-bundle" > /xen/DEBIAN/control && \
                 echo "Source: kfx-bundle" >> /xen/DEBIAN/control && \
                 echo "Version: ${XENVERSION}" >> /xen/DEBIAN/control && \
@@ -328,8 +328,8 @@ jobs:
                     >> /xen/DEBIAN/control && \
                 find /xen/etc -type f -printf '%P\n' | xargs -i echo '/etc/{}' \
                     > /xen/DEBIAN/conffiles && \
-                chown -R root:root /xen/ && \
-                dpkg-deb --build -z0 /xen \
+                sudo chown -R root:root /xen/ && \
+                sudo dpkg-deb --build -z0 /xen \
                     "/debs/kfx-bundle_${XENVERSION}-${KFX_VERSION}_${ARCH}.deb"
 
       - uses: actions/upload-artifact@v3
