@@ -163,7 +163,7 @@ jobs:
       - name: Build AFL++
         shell: bash
         run: |
-            git clone --recurse-submodules \
+            sudo git clone --recurse-submodules \
                 https://github.com/AFLplusplus/AFLplusplus.git /aflplusplus-git
                 
             git -C /aflplusplus-git fetch --all && \
