@@ -166,10 +166,10 @@ jobs:
             sudo git clone --recurse-submodules \
                 https://github.com/AFLplusplus/AFLplusplus.git /aflplusplus-git
                 
-            git -C /aflplusplus-git fetch --all && \
-                git -C /aflplusplus-git checkout 8cdc48f73a17ddd557897f2098937a8ba3bfe184 && \
+            # git -C /aflplusplus-git checkout 8cdc48f73a17ddd557897f2098937a8ba3bfe184 && \
+            sudo git -C /aflplusplus-git fetch --all && \
                 sudo mkdir -p /aflplusplus && \
-                make -C /afplusplus-git source-only && \
+                sudo make -C /afplusplus-git source-only && \
                 sudo make -C /aflplusplus-git DESTDIR=/aflplusplus install
       - name: Build KF/x
         shell: bash
@@ -184,7 +184,7 @@ jobs:
             sudo mkdir -p /output/ && \
                 echo "/output/lib/" | sudo tee /etc/ld.so.conf.d/build.conf && \
                 echo "/xen/usr/local/lib/" | sudo tee -a /etc/ld.so.conf.d/build.conf && \
-                ldconfig
+                sudo ldconfig
 
             /usr/local/go/bin/go build -C dwarf2json -buildvcs=false && \
                 sudo mkdir -p /output/bin && \
