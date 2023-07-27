@@ -205,7 +205,7 @@ jobs:
                 exit 1
             fi
 
-            sudo make -C libxdc PREFIX=/output/ install
+            sudo make -e -C libxdc PREFIX=/output/ install
             if [ ! -f "/output/lib/libxdc.a" ]; then
                 echo "No file libxdc.a found, libxdc build failed!"
                 exit 1
@@ -215,8 +215,8 @@ jobs:
                 autoreconf -vif && \
                 ./configure --disable-kvm --disable-file --disable-bareflank \
                     --disable-vmifs --prefix=/output/ && \
-                make -j$(nproc) && \
-                sudo make install && \
+                make -e -j$(nproc) && \
+                sudo make -e install && \
                 popd
             if [ ! -f "/output/lib/libvmi.a" ]; then
                 echo "No file libvmi.a found, libvmi build failed!"
@@ -225,8 +225,8 @@ jobs:
 
             autoreconf -vif && \
                 ./configure --prefix=/output/ && \
-                make -j$(nproc) && \
-                sudo make install
+                make -e -j$(nproc) && \
+                sudo make -e install
 
             if [ ! -f "/output/bin/kfx" ]; then
                 echo "No file kfx found, KF/x build failed!"
